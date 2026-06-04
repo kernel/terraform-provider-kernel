@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 )
 
 var _ provider.Provider = (*kernelProvider)(nil)
@@ -62,8 +63,14 @@ func (p *kernelProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		return
 	}
 
-	resp.DataSourceData = config
-	resp.ResourceData = config
+	clients := kernelclient.New(kernelclient.Config{
+		APIKey:    config.APIKey,
+		BaseURL:   config.BaseURL,
+		ProjectID: config.ProjectID,
+	})
+
+	resp.DataSourceData = clients
+	resp.ResourceData = clients
 }
 
 func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resource {
