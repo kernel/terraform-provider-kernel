@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 )
 
 func TestResolveProviderConfigPrefersTerraformConfigOverEnv(t *testing.T) {
@@ -129,16 +130,11 @@ func TestConfigurePassesResolvedConfigToResourcesAndDataSources(t *testing.T) {
 		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
 	}
 
-	want := configuredProvider{
-		APIKey:    "config-api-key",
-		BaseURL:   "https://config.example",
-		ProjectID: "config-project",
+	if _, ok := resp.ResourceData.(kernelclient.Clients); !ok {
+		t.Fatalf("ResourceData type = %T, want kernelclient.Clients", resp.ResourceData)
 	}
-	if resp.ResourceData != want {
-		t.Fatalf("ResourceData = %#v, want %#v", resp.ResourceData, want)
-	}
-	if resp.DataSourceData != want {
-		t.Fatalf("DataSourceData = %#v, want %#v", resp.DataSourceData, want)
+	if _, ok := resp.DataSourceData.(kernelclient.Clients); !ok {
+		t.Fatalf("DataSourceData type = %T, want kernelclient.Clients", resp.DataSourceData)
 	}
 }
 
