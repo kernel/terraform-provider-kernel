@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -14,8 +15,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = (*browserPoolResource)(nil)
-	_ resource.ResourceWithConfigure = (*browserPoolResource)(nil)
+	_ resource.Resource                = (*browserPoolResource)(nil)
+	_ resource.ResourceWithConfigure   = (*browserPoolResource)(nil)
+	_ resource.ResourceWithImportState = (*browserPoolResource)(nil)
 )
 
 type browserPoolClient interface {
@@ -129,6 +131,42 @@ func (r *browserPoolResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 
 	resp.Diagnostics.Append(r.delete(ctx, state)...)
+}
+
+func (r *browserPoolResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if r.client == nil {
+		addMissingClientDiagnostic(&resp.Diagnostics)
+		return
+	}
+
+	projectID, poolID, ok := parseImportID(req.ID)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Invalid Kernel Browser Pool Import ID",
+			"Cannot import \""+req.ID+"\": import a browser pool as \"<pool-id>\" or \"<project-id>/<pool-id>\". "+
+				"The bare form resolves the project the same way create does: the provider default, "+
+				"else the API key's binding. Use the project form to import from a different project.",
+		)
+		return
+	}
+
+	if projectID == "" {
+		projectID = r.client.DefaultProjectID()
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), poolID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectscope.StateValue(projectID))...)
+}
+
+func parseImportID(id string) (projectID, poolID string, ok bool) {
+	before, after, found := strings.Cut(id, "/")
+	if !found {
+		return "", id, id != ""
+	}
+	if strings.Contains(after, "/") {
+		return "", "", false
+	}
+	return before, after, before != "" && after != ""
 }
 
 func (r *browserPoolResource) create(ctx context.Context, plan browserPoolModel) (browserPoolModel, diag.Diagnostics) {
