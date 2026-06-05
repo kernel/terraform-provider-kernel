@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	tfprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	providerschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -47,8 +48,26 @@ func TestProviderRegistersBrowserPoolResource(t *testing.T) {
 		t.Fatalf("resource TypeName = %q, want kernel_browser_pool", resp.TypeName)
 	}
 
-	if dataSources := p.DataSources(context.Background()); len(dataSources) != 0 {
-		t.Fatalf("DataSources length = %d, want 0", len(dataSources))
+}
+
+func TestProviderRegistersDataSources(t *testing.T) {
+	t.Parallel()
+
+	p := provider.New("test")()
+
+	dataSources := p.DataSources(context.Background())
+	if len(dataSources) != 1 {
+		t.Fatalf("DataSources length = %d, want 1", len(dataSources))
+	}
+
+	var resp datasource.MetadataResponse
+	dataSources[0]().Metadata(
+		context.Background(),
+		datasource.MetadataRequest{ProviderTypeName: "kernel"},
+		&resp,
+	)
+	if resp.TypeName != "kernel_project" {
+		t.Fatalf("data source TypeName = %q, want kernel_project", resp.TypeName)
 	}
 }
 
