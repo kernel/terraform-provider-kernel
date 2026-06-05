@@ -2,7 +2,9 @@ package kernelclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	kernel "github.com/kernel/kernel-go-sdk"
@@ -10,6 +12,14 @@ import (
 )
 
 const DefaultRequestTimeout = 2 * time.Minute
+
+const nameLookupLimit int64 = 100
+
+type ProjectPage struct {
+	Items       []kernel.Project
+	NextOffset  int64
+	HasNextPage bool
+}
 
 // Config configures the shared Kernel API clients. ProjectID is a default
 // only; the client never applies it implicitly.
@@ -69,6 +79,35 @@ func (c Clients) GetProject(ctx context.Context, id string) (*kernel.Project, er
 	return c.projects.Get(ctx, id)
 }
 
+func (c Clients) ListProjectPage(ctx context.Context, query string, offset int64) (ProjectPage, error) {
+	var raw *http.Response
+	params := kernel.ProjectListParams{
+		Query: kernel.String(query),
+		Limit: kernel.Int(nameLookupLimit),
+	}
+	if offset > 0 {
+		params.Offset = kernel.Int(offset)
+	}
+
+	page, err := c.projects.List(ctx, params, option.WithResponseInto(&raw))
+	if err != nil {
+		return ProjectPage{}, err
+	}
+	if page == nil {
+		return ProjectPage{}, fmt.Errorf("Kernel returned an empty project list response")
+	}
+
+	next, ok, err := projectLookupNextOffset(raw, offset)
+	if err != nil {
+		return ProjectPage{}, err
+	}
+	return ProjectPage{
+		Items:       page.Items,
+		NextOffset:  next,
+		HasNextPage: ok,
+	}, nil
+}
+
 // The remaining methods are project-scoped and take the resolved project
 // for each call.
 
@@ -109,6 +148,34 @@ func scope(projectID string, extra ...option.RequestOption) []option.RequestOpti
 
 func noMutationRetries() option.RequestOption {
 	return option.WithMaxRetries(0)
+}
+
+func projectLookupNextOffset(raw *http.Response, current int64) (int64, bool, error) {
+	if raw == nil {
+		return 0, false, fmt.Errorf("Kernel returned an empty pagination response")
+	}
+
+	value := raw.Header.Get("X-Next-Offset")
+	if value == "" {
+		return 0, false, nil
+	}
+
+	next, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid Kernel pagination next offset %q: %w", value, err)
+	}
+	if next <= 0 {
+		return 0, false, nil
+	}
+	if next <= current {
+		return 0, false, fmt.Errorf(
+			"non-advancing Kernel project pagination: current offset %d, next offset %d",
+			current,
+			next,
+		)
+	}
+
+	return next, true, nil
 }
 
 func requestOptions(config Config, clientOpts clientOptions) []option.RequestOption {

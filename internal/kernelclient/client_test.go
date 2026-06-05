@@ -80,6 +80,71 @@ func TestClientsSendProjectHeaderOnlyWhenExplicitlyScoped(t *testing.T) {
 	}
 }
 
+func TestListProjectPageReadsItemsAndNextOffset(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:  "test-api-key",
+		BaseURL: "https://api.example",
+	}, WithHTTPClient(projectLookupHTTPClient(t, &requests, "Target", []lookupPage{
+		{body: projectListPage(projectJSON("project-other", "Other")), next: "100"},
+		{offset: "100", body: projectListPage(projectJSON("project-target", "Target"))},
+	})))
+
+	page, err := clients.ListProjectPage(context.Background(), "Target", 0)
+	if err != nil {
+		t.Fatalf("ListProjectPage returned error: %v", err)
+	}
+	if got, want := len(page.Items), 1; got != want {
+		t.Fatalf("items length = %d, want %d", got, want)
+	}
+	if page.Items[0].ID != "project-other" {
+		t.Fatalf("project id = %q, want project-other", page.Items[0].ID)
+	}
+	if !page.HasNextPage {
+		t.Fatal("HasNextPage = false, want true")
+	}
+	if page.NextOffset != 100 {
+		t.Fatalf("NextOffset = %d, want 100", page.NextOffset)
+	}
+
+	page, err = clients.ListProjectPage(context.Background(), "Target", 100)
+	if err != nil {
+		t.Fatalf("ListProjectPage returned error: %v", err)
+	}
+	if page.HasNextPage {
+		t.Fatal("HasNextPage = true, want false")
+	}
+	if page.Items[0].ID != "project-target" {
+		t.Fatalf("project id = %q, want project-target", page.Items[0].ID)
+	}
+	if got, want := len(requests), 2; got != want {
+		t.Fatalf("request count = %d, want %d", got, want)
+	}
+}
+
+func TestListProjectPageRejectsRepeatedNextOffset(t *testing.T) {
+	t.Parallel()
+
+	clients := New(Config{
+		APIKey:  "test-api-key",
+		BaseURL: "https://api.example",
+	}, WithHTTPClient(projectLookupHTTPClient(t, nil, "Target", []lookupPage{
+		{offset: "100", body: projectListPage(projectJSON("project-b", "Other")), next: "100"},
+	})))
+
+	_, err := clients.ListProjectPage(context.Background(), "Target", 100)
+	if err == nil {
+		t.Fatal("expected repeated next offset error")
+	}
+	for _, want := range []string{"non-advancing", "current offset 100", "next offset 100"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want %q", err.Error(), want)
+		}
+	}
+}
+
 func TestClientsDoNotReadSDKEnvironmentDefaults(t *testing.T) {
 	t.Setenv("KERNEL_BASE_URL", "https://env.example")
 	t.Setenv("KERNEL_API_KEY", "env-api-key")
@@ -234,6 +299,12 @@ type capturedRequest struct {
 	HasDeadline   bool
 }
 
+type lookupPage struct {
+	offset string
+	next   string
+	body   string
+}
+
 func recordingHTTPClient(requests *[]capturedRequest, responseBody func(*http.Request) string) *http.Client {
 	return recordingHTTPClientWithStatus(requests, http.StatusOK, responseBody)
 }
@@ -241,18 +312,7 @@ func recordingHTTPClient(requests *[]capturedRequest, responseBody func(*http.Re
 func recordingHTTPClientWithStatus(requests *[]capturedRequest, status int, responseBody func(*http.Request) string) *http.Client {
 	return &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if requests != nil {
-				_, hasDeadline := req.Context().Deadline()
-				*requests = append(*requests, capturedRequest{
-					Method:        req.Method,
-					Path:          req.URL.Path,
-					Host:          req.URL.Host,
-					Authorization: req.Header.Get("Authorization"),
-					ProjectID:     req.Header.Get("X-Kernel-Project-Id"),
-					RetryCount:    req.Header.Get("X-Stainless-Retry-Count"),
-					HasDeadline:   hasDeadline,
-				})
-			}
+			captureRequest(requests, req)
 
 			return &http.Response{
 				StatusCode: status,
@@ -261,4 +321,87 @@ func recordingHTTPClientWithStatus(requests *[]capturedRequest, status int, resp
 			}, nil
 		}),
 	}
+}
+
+func recordingHTTPClientWithHeaders(requests *[]capturedRequest, response func(*http.Request) (string, http.Header)) *http.Client {
+	return &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			captureRequest(requests, req)
+
+			body, header := response(req)
+			if header == nil {
+				header = http.Header{}
+			}
+			if header.Get("Content-Type") == "" {
+				header.Set("Content-Type", "application/json")
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     header,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil
+		}),
+	}
+}
+
+func captureRequest(requests *[]capturedRequest, req *http.Request) {
+	if requests == nil {
+		return
+	}
+
+	_, hasDeadline := req.Context().Deadline()
+	*requests = append(*requests, capturedRequest{
+		Method:        req.Method,
+		Path:          req.URL.Path,
+		Host:          req.URL.Host,
+		Authorization: req.Header.Get("Authorization"),
+		ProjectID:     req.Header.Get("X-Kernel-Project-Id"),
+		RetryCount:    req.Header.Get("X-Stainless-Retry-Count"),
+		HasDeadline:   hasDeadline,
+	})
+}
+
+func nextOffset(offset string) http.Header {
+	if offset == "" {
+		return nil
+	}
+	return http.Header{"X-Next-Offset": []string{offset}}
+}
+
+func projectLookupHTTPClient(t *testing.T, requests *[]capturedRequest, wantQuery string, pages []lookupPage) *http.Client {
+	t.Helper()
+
+	byOffset := make(map[string]lookupPage, len(pages))
+	for _, page := range pages {
+		byOffset[page.offset] = page
+	}
+
+	return recordingHTTPClientWithHeaders(requests, func(req *http.Request) (string, http.Header) {
+		if req.URL.Path != "/org/projects" {
+			t.Fatalf("path = %s, want /org/projects", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("query"); got != wantQuery {
+			t.Fatalf("query = %q, want %q", got, wantQuery)
+		}
+		if got := req.Header.Get("X-Kernel-Project-Id"); got != "" {
+			t.Fatalf("project header = %q, want empty", got)
+		}
+
+		offset := req.URL.Query().Get("offset")
+		page, ok := byOffset[offset]
+		if !ok {
+			t.Fatalf("unexpected offset: %q", offset)
+		}
+
+		return page.body, nextOffset(page.next)
+	})
+}
+
+func projectListPage(projects ...string) string {
+	return "[" + strings.Join(projects, ",") + "]"
+}
+
+func projectJSON(id, name string) string {
+	return `{"id":"` + id + `","name":"` + name + `","status":"active","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
 }
