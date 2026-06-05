@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
+	"github.com/kernel/terraform-provider-kernel/internal/resources/browserpool"
 )
 
 var _ provider.Provider = (*kernelProvider)(nil)
@@ -74,7 +75,9 @@ func (p *kernelProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource{
+		browserpool.NewResource,
+	}
 }
 
 func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
