@@ -237,6 +237,36 @@ func TestListProxyPageReadsItemsAndNextOffset(t *testing.T) {
 	}
 }
 
+func TestGetExtensionResolvesByIDOrNameWithinProject(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(recordingHTTPClient(&requests, func(req *http.Request) string {
+		if req.URL.Path != "/extensions/Target/metadata" {
+			t.Fatalf("unexpected path: %s", req.URL.Path)
+		}
+		if got := req.Header.Get("X-Kernel-Project-Id"); got != "project_123" {
+			t.Fatalf("X-Kernel-Project-Id = %q, want project_123", got)
+		}
+		return `{"id":"extension-target","name":"Target","created_at":"2026-06-05T12:00:00Z","size_bytes":1234,"last_used_at":null}`
+	})))
+
+	ext, err := clients.GetExtension(context.Background(), "project_123", "Target")
+	if err != nil {
+		t.Fatalf("GetExtension returned error: %v", err)
+	}
+	if ext == nil || ext.ID != "extension-target" {
+		t.Fatalf("GetExtension id = %v, want extension-target", ext)
+	}
+	if got, want := len(requests), 1; got != want {
+		t.Fatalf("request count = %d, want %d", got, want)
+	}
+}
+
 func TestClientsDoNotReadSDKEnvironmentDefaults(t *testing.T) {
 	t.Setenv("KERNEL_BASE_URL", "https://env.example")
 	t.Setenv("KERNEL_API_KEY", "env-api-key")

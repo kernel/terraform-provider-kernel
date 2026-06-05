@@ -131,7 +131,7 @@ func flattenFillRatePerMinute(raw string, valid bool, value int64, diags *diag.D
 	return result
 }
 
-func flattenProfileID(profile shared.BrowserProfile, diags *diag.Diagnostics) types.String {
+func flattenProfileID(profile kernel.BrowserPoolBrowserPoolConfigProfile, diags *diag.Diagnostics) types.String {
 	if !validResponseString(profile.JSON.ID.Raw(), profile.JSON.ID.Valid(), profile.ID) {
 		addInvalidResponseDiagnostic(diags, "browser_pool_config.profile.id")
 		return types.StringNull()

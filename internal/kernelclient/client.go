@@ -151,6 +151,12 @@ func (c Clients) ListProfilePage(ctx context.Context, projectID, query string, o
 	}, nil
 }
 
+// GetExtension resolves an extension by ID or by name within the project; the
+// API treats the path parameter as id-or-name and returns metadata only.
+func (c Clients) GetExtension(ctx context.Context, projectID, idOrName string) (*kernel.ExtensionGetResponse, error) {
+	return c.extensions.Get(ctx, idOrName, scope(projectID)...)
+}
+
 func (c Clients) CreateBrowserPool(ctx context.Context, projectID string, params kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error) {
 	return c.browserPools.New(ctx, params, scope(projectID, noMutationRetries())...)
 }
