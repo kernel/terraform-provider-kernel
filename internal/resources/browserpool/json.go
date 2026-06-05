@@ -10,6 +10,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
+// chrome_policy diagnostic text shared by the plan-time validator
+// (normalizeChromePolicyJSON, here) and the SDK-boundary expand
+// (decodeChromePolicyJSON, in expand.go) so the same malformed value reports
+// identically whether it's caught at plan or apply time. Each call site still
+// owns whether it's an attribute-scoped or general diagnostic.
+const (
+	chromePolicyInvalidJSONSummary  = "Invalid Chrome Policy JSON"
+	chromePolicyInvalidSyntaxDetail = "chrome_policy must be valid JSON object syntax: " // followed by the decode error
+	chromePolicyNotObjectDetail     = "chrome_policy must be a JSON object."
+)
+
 // normalizeChromePolicyJSON parses a chrome_policy string as a single JSON
 // object and re-serializes it to a canonical form (Go marshals map keys
 // sorted, with no insignificant whitespace) for semantic comparison. It does
@@ -21,15 +32,15 @@ func normalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
 	policy, err := decodeChromePolicy(input)
 	if err != nil {
 		diags.AddError(
-			"Invalid Chrome Policy JSON",
-			"chrome_policy must be valid JSON object syntax: "+err.Error(),
+			chromePolicyInvalidJSONSummary,
+			chromePolicyInvalidSyntaxDetail+err.Error(),
 		)
 		return "", diags
 	}
 	if policy == nil {
 		diags.AddError(
-			"Invalid Chrome Policy JSON",
-			"chrome_policy must be a JSON object.",
+			chromePolicyInvalidJSONSummary,
+			chromePolicyNotObjectDetail,
 		)
 		return "", diags
 	}
@@ -39,7 +50,7 @@ func normalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(policy); err != nil {
 		diags.AddError(
-			"Invalid Chrome Policy JSON",
+			chromePolicyInvalidJSONSummary,
 			"chrome_policy could not be normalized: "+err.Error(),
 		)
 		return "", diags
