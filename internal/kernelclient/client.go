@@ -22,6 +22,7 @@ type Page[T any] struct {
 }
 
 type ProfilePage = Page[kernel.Profile]
+type ProxyPage = Page[kernel.ProxyListResponse]
 
 // Config configures the shared Kernel API clients. ProjectID is a default
 // only; the client never applies it implicitly.
@@ -90,6 +91,33 @@ func (c Clients) GetProxy(ctx context.Context, projectID, id string) (*kernel.Pr
 	return c.proxies.Get(ctx, id, scope(projectID)...)
 }
 
+func (c Clients) ListProxyPage(ctx context.Context, projectID string, offset int64) (ProxyPage, error) {
+	var raw *http.Response
+	params := kernel.ProxyListParams{
+		Limit: kernel.Int(nameLookupLimit),
+	}
+	if offset > 0 {
+		params.Offset = kernel.Int(offset)
+	}
+
+	page, err := c.proxies.List(ctx, params, scope(projectID, option.WithResponseInto(&raw))...)
+	if err != nil {
+		return ProxyPage{}, err
+	}
+	if page == nil {
+		return ProxyPage{}, fmt.Errorf("Kernel returned an empty proxy list response")
+	}
+
+	next, ok, err := lookupNextOffset(raw, offset, "proxy")
+	if err != nil {
+		return ProxyPage{}, err
+	}
+	return ProxyPage{
+		Items:       page.Items,
+		NextOffset:  next,
+		HasNextPage: ok,
+	}, nil
+}
 func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*kernel.Profile, error) {
 	return c.profiles.Get(ctx, idOrName, scope(projectID)...)
 }
