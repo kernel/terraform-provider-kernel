@@ -2,12 +2,13 @@ package browserpool
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 
 	tfattr "github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -25,7 +26,6 @@ func TestSchemaContainsOnlyDurableAttributes(t *testing.T) {
 		"project_id":           {},
 		"size":                 {},
 		"profile_id":           {},
-		"profile_save_changes": {},
 		"proxy_id":             {},
 		"extension_ids":        {},
 		"chrome_policy":        {},
@@ -146,10 +146,12 @@ func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 
 	assertInt64Rejects(t, int64Attribute(t, s, "size"), "size", 0)
 	assertInt64Accepts(t, int64Attribute(t, s, "size"), "size", 1)
-	assertInt64Rejects(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 0)
-	assertInt64Accepts(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 1)
-	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 0)
-	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 101)
+	assertInt64Rejects(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 9)
+	assertInt64Accepts(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 10)
+	assertInt64Accepts(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 259200)
+	assertInt64Rejects(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 259201)
+	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", -1)
+	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 0)
 	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 100)
 
 	viewport := singleNestedAttribute(t, s, "viewport")
@@ -163,17 +165,25 @@ func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 
 func TestSchemaValidatesChromePolicyJSON(t *testing.T) {
 	attr := stringAttribute(t, BrowserPoolSchema(), "chrome_policy")
+	if _, ok := attr.CustomType.(ChromePolicyType); !ok {
+		t.Fatalf("chrome_policy custom type is %T, want ChromePolicyType", attr.CustomType)
+	}
 
 	assertStringRejects(t, attr, "chrome_policy", `{`)
 	assertStringRejects(t, attr, "chrome_policy", `[]`)
 	assertStringAccepts(t, attr, "chrome_policy", `{"HomepageLocation":"https://example.com"}`)
 }
 
-func TestSchemaValidatesNameNonEmpty(t *testing.T) {
+func TestSchemaValidatesNameAPIContract(t *testing.T) {
 	attr := stringAttribute(t, BrowserPoolSchema(), "name")
 
 	assertStringRejects(t, attr, "name", "")
+	assertStringRejects(t, attr, "name", "bad name")
+	assertStringRejects(t, attr, "name", "bad/name")
+	assertStringRejects(t, attr, "name", strings.Repeat("a", 256))
+	assertStringRejects(t, attr, "name", "abcdefghijklmnopqrstuvwx")
 	assertStringAccepts(t, attr, "name", "pool-1")
+	assertStringAccepts(t, attr, "name", "pool.name_1")
 }
 
 func TestSchemaValidatesProfileIDNonEmpty(t *testing.T) {
@@ -200,53 +210,11 @@ func TestSchemaValidatesStartURLNonEmpty(t *testing.T) {
 func TestSchemaValidatesExtensionIDsAreNonEmpty(t *testing.T) {
 	attr := setAttribute(t, BrowserPoolSchema(), "extension_ids")
 
-	assertSetRejects(t, attr, "extension_ids", types.SetValueMust(types.StringType, []tfattr.Value{
-		types.StringValue(""),
-	}))
-	assertSetRejects(t, attr, "extension_ids", types.SetValueMust(types.StringType, []tfattr.Value{
-		types.StringNull(),
-	}))
-	assertSetAccepts(t, attr, "extension_ids", types.SetValueMust(types.StringType, []tfattr.Value{
-		types.StringUnknown(),
-	}))
-	assertSetAccepts(t, attr, "extension_ids", types.SetValueMust(types.StringType, []tfattr.Value{
-		types.StringValue("ext-1"),
-	}))
-}
-
-func TestConfigValidatorRequiresProfileIDWhenSavingProfileChanges(t *testing.T) {
-	model := minimalConfigModel()
-	model.ProfileSaveChanges = types.BoolValue(true)
-
-	diags := validateResourceConfig(t, model)
-	if !diags.HasError() {
-		t.Fatal("expected profile_save_changes without profile_id to fail validation")
-	}
-	if !hasDiagnosticPath(diags, path.Root("profile_save_changes")) {
-		t.Fatalf("expected diagnostic at profile_save_changes, got %v", diags)
-	}
-}
-
-func TestConfigValidatorAllowsUnknownProfileIDWhenSavingProfileChanges(t *testing.T) {
-	model := minimalConfigModel()
-	model.ProfileID = types.StringUnknown()
-	model.ProfileSaveChanges = types.BoolValue(true)
-
-	diags := validateResourceConfig(t, model)
-	if diags.HasError() {
-		t.Fatalf("unexpected diagnostics for unknown profile_id: %v", diags)
-	}
-}
-
-func TestConfigValidatorAllowsProfileSaveChangesWithProfileID(t *testing.T) {
-	model := minimalConfigModel()
-	model.ProfileID = types.StringValue("profile-1")
-	model.ProfileSaveChanges = types.BoolValue(true)
-
-	diags := validateResourceConfig(t, model)
-	if diags.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
+	assertSetRejects(t, attr, "extension_ids", stringSet(types.StringValue("")))
+	assertSetRejects(t, attr, "extension_ids", stringSet(types.StringNull()))
+	assertSetRejects(t, attr, "extension_ids", extensionIDSet(21))
+	assertSetAccepts(t, attr, "extension_ids", stringSet(types.StringUnknown()))
+	assertSetAccepts(t, attr, "extension_ids", stringSet(types.StringValue("ext-1")))
 }
 
 func assertStringAttribute(t *testing.T, s rschema.Schema, name string, check func(rschema.StringAttribute) bool) {
@@ -401,61 +369,14 @@ func validateSet(validators []validator.Set, name string, value types.Set) diag.
 	return resp.Diagnostics
 }
 
-func validateResourceConfig(t *testing.T, model BrowserPoolModel) diag.Diagnostics {
-	t.Helper()
-
-	ctx := context.Background()
-	schema := BrowserPoolSchema()
-	var value types.Object
-	diags := tfsdk.ValueFrom(ctx, model, schema.Type(), &value)
-	if diags.HasError() {
-		t.Fatalf("build config object: %v", diags)
-	}
-
-	raw, err := value.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("convert config object to Terraform value: %v", err)
-	}
-
-	req := resource.ValidateConfigRequest{
-		Config: tfsdk.Config{
-			Raw:    raw,
-			Schema: schema,
-		},
-	}
-	var resp resource.ValidateConfigResponse
-	for _, validator := range ConfigValidators() {
-		validator.ValidateResource(ctx, req, &resp)
-	}
-	return resp.Diagnostics
+func stringSet(values ...tfattr.Value) types.Set {
+	return types.SetValueMust(types.StringType, values)
 }
 
-func hasDiagnosticPath(diags diag.Diagnostics, want path.Path) bool {
-	for _, diagnostic := range diags {
-		withPath, ok := diagnostic.(diag.DiagnosticWithPath)
-		if ok && withPath.Path().Equal(want) {
-			return true
-		}
+func extensionIDSet(count int) types.Set {
+	values := make([]tfattr.Value, 0, count)
+	for i := 0; i < count; i++ {
+		values = append(values, types.StringValue("ext-"+strconv.Itoa(i)))
 	}
-	return false
-}
-
-func minimalConfigModel() BrowserPoolModel {
-	return BrowserPoolModel{
-		ID:                 types.StringNull(),
-		Name:               types.StringNull(),
-		Size:               types.Int64Value(1),
-		ProfileID:          types.StringNull(),
-		ProfileSaveChanges: types.BoolNull(),
-		ProxyID:            types.StringNull(),
-		ExtensionIDs:       types.SetNull(types.StringType),
-		ChromePolicy:       types.StringNull(),
-		Viewport:           types.ObjectNull(viewportAttrTypes()),
-		Headless:           types.BoolNull(),
-		KioskMode:          types.BoolNull(),
-		Stealth:            types.BoolNull(),
-		StartURL:           types.StringNull(),
-		TimeoutSeconds:     types.Int64Null(),
-		FillRatePerMinute:  types.Int64Null(),
-	}
+	return stringSet(values...)
 }

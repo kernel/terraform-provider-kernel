@@ -1,10 +1,12 @@
 package browserpool
 
 const (
-	minBrowserPoolSize     int64 = 1
-	minTimeoutSeconds      int64 = 1
-	minFillRatePerMinute   int64 = 1
-	maxFillRatePerMinute   int64 = 100
-	minViewportDimension   int64 = 1
-	minViewportRefreshRate int64 = 1
+	maxBrowserPoolNameLength int   = 255
+	maxBrowserPoolExtensions int   = 20
+	minBrowserPoolSize       int64 = 1
+	minTimeoutSeconds        int64 = 10
+	maxTimeoutSeconds        int64 = 259200
+	minFillRatePerMinute     int64 = 0
+	minViewportDimension     int64 = 1
+	minViewportRefreshRate   int64 = 1
 )

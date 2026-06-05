@@ -3,26 +3,24 @@ package browserpool
 import (
 	"context"
 	"fmt"
+	"regexp"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
-	_ validator.Int64          = int64RangeValidator{}
-	_ validator.String         = chromePolicyJSONValidator{}
-	_ validator.String         = nonEmptyStringValidator{}
-	_ validator.Set            = nonEmptyStringSetValidator{}
-	_ resource.ConfigValidator = profileSaveChangesValidator{}
+	_ validator.Int64  = int64RangeValidator{}
+	_ validator.String = browserPoolNameValidator{}
+	_ validator.String = chromePolicyJSONValidator{}
+	_ validator.String = nonEmptyStringValidator{}
+	_ validator.Set    = nonEmptyStringSetValidator{}
 )
 
-func ConfigValidators() []resource.ConfigValidator {
-	return []resource.ConfigValidator{
-		profileSaveChangesValidator{},
-	}
-}
+var (
+	browserPoolNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,255}$`)
+	cuidPattern            = regexp.MustCompile(`^[a-z0-9]{24}$`)
+)
 
 type int64RangeValidator struct {
 	min    int64
@@ -70,6 +68,33 @@ func (chromePolicyJSONValidator) Description(context.Context) string {
 	return "value must be a valid JSON object"
 }
 
+type browserPoolNameValidator struct{}
+
+func (browserPoolNameValidator) Description(context.Context) string {
+	return "name must be 1-255 characters using letters, numbers, dots, underscores, or hyphens, and must not be cuid-like"
+}
+
+func (v browserPoolNameValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (browserPoolNameValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	value := req.ConfigValue.ValueString()
+	if browserPoolNamePattern.MatchString(value) && !cuidPattern.MatchString(value) {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		req.Path,
+		"Invalid Browser Pool Name",
+		"name must be 1-255 characters using letters, numbers, dots, underscores, or hyphens, and must not be a cuid-like string.",
+	)
+}
+
 func (v chromePolicyJSONValidator) MarkdownDescription(ctx context.Context) string {
 	return v.Description(ctx)
 }
@@ -115,7 +140,7 @@ func (v nonEmptyStringValidator) ValidateString(_ context.Context, req validator
 type nonEmptyStringSetValidator struct{}
 
 func (nonEmptyStringSetValidator) Description(context.Context) string {
-	return "values must not be empty strings"
+	return fmt.Sprintf("values must not be empty strings and must contain at most %d items", maxBrowserPoolExtensions)
 }
 
 func (v nonEmptyStringSetValidator) MarkdownDescription(ctx context.Context) string {
@@ -124,6 +149,15 @@ func (v nonEmptyStringSetValidator) MarkdownDescription(ctx context.Context) str
 
 func (nonEmptyStringSetValidator) ValidateSet(ctx context.Context, req validator.SetRequest, resp *validator.SetResponse) {
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	if len(req.ConfigValue.Elements()) > maxBrowserPoolExtensions {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid Extension IDs",
+			fmt.Sprintf("extension_ids cannot contain more than %d items.", maxBrowserPoolExtensions),
+		)
 		return
 	}
 
@@ -142,39 +176,4 @@ func (nonEmptyStringSetValidator) ValidateSet(ctx context.Context, req validator
 			return
 		}
 	}
-}
-
-type profileSaveChangesValidator struct{}
-
-func (profileSaveChangesValidator) Description(context.Context) string {
-	return "profile_save_changes requires profile_id"
-}
-
-func (v profileSaveChangesValidator) MarkdownDescription(ctx context.Context) string {
-	return v.Description(ctx)
-}
-
-func (profileSaveChangesValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var model BrowserPoolModel
-
-	resp.Diagnostics.Append(req.Config.Get(ctx, &model)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !isKnownBool(model.ProfileSaveChanges) || !model.ProfileSaveChanges.ValueBool() || model.ProfileID.IsUnknown() {
-		return
-	}
-
-	if model.ProfileID.IsNull() || model.ProfileID.ValueString() == "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("profile_save_changes"),
-			"Invalid Profile Configuration",
-			"profile_save_changes requires profile_id so Kernel knows which profile should receive saved browser changes.",
-		)
-	}
-}
-
-func isKnownBool(value types.Bool) bool {
-	return !value.IsNull() && !value.IsUnknown()
 }
