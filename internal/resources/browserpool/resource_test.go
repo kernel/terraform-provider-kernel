@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
@@ -91,6 +92,80 @@ func TestResourceMetadataAndSchema(t *testing.T) {
 	r.Schema(context.Background(), tfresource.SchemaRequest{}, &schema)
 	if _, ok := schema.Schema.Attributes["size"]; !ok {
 		t.Fatal("browser pool schema missing size attribute")
+	}
+}
+
+func TestResourceImportState(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		importID         string
+		defaultProjectID string
+		wantErr          bool
+		wantPoolID       string
+		wantProjectID    types.String
+	}{
+		"bare pool id resolves the provider default like create": {
+			importID:         "pool-1",
+			defaultProjectID: "proj_default",
+			wantPoolID:       "pool-1",
+			wantProjectID:    types.StringValue("proj_default"),
+		},
+		"bare pool id stays unscoped without a default": {
+			importID:      "pool-1",
+			wantPoolID:    "pool-1",
+			wantProjectID: types.StringNull(),
+		},
+		"project-qualified id overrides the default": {
+			importID:         "proj_a/pool-1",
+			defaultProjectID: "proj_default",
+			wantPoolID:       "pool-1",
+			wantProjectID:    types.StringValue("proj_a"),
+		},
+		"empty id is rejected":           {importID: "", wantErr: true},
+		"empty project part is rejected": {importID: "/pool-1", wantErr: true},
+		"empty pool part is rejected":    {importID: "proj_a/", wantErr: true},
+		"extra separators are rejected":  {importID: "a/b/c", wantErr: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			var r tfresource.ResourceWithImportState = newResourceWithClient(fakeBrowserPoolClient{
+				defaultProjectID: test.defaultProjectID,
+			})
+
+			var resp tfresource.ImportStateResponse
+			resp.State.Schema = BrowserPoolSchema()
+			resp.State.RemoveResource(ctx)
+
+			r.ImportState(ctx, tfresource.ImportStateRequest{ID: test.importID}, &resp)
+			if test.wantErr {
+				if !resp.Diagnostics.HasError() {
+					t.Fatalf("expected diagnostics for import id %q", test.importID)
+				}
+				return
+			}
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+
+			var id types.String
+			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &id)...)
+			var projectID types.String
+			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("project_id"), &projectID)...)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("read imported state: %v", resp.Diagnostics)
+			}
+			if id.ValueString() != test.wantPoolID {
+				t.Fatalf("imported id = %q, want %q", id.ValueString(), test.wantPoolID)
+			}
+			if !projectID.Equal(test.wantProjectID) {
+				t.Fatalf("imported project_id = %v, want %v", projectID, test.wantProjectID)
+			}
+		})
 	}
 }
 
