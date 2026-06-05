@@ -84,7 +84,7 @@ func UniqueName(t testing.TB, prefix string) string {
 func CleanupBrowserPool(t testing.TB, projectID, id string) {
 	t.Helper()
 
-	cleanupBrowserPool(t, clientFromEnv(), projectID, id)
+	cleanupBrowserPool(t, ClientFromEnv(), projectID, id)
 }
 
 type browserPoolCleaner interface {
@@ -121,7 +121,7 @@ func cleanupBrowserPool(t testing.TB, client browserPoolCleaner, projectID, id s
 	})
 }
 
-func clientFromEnv() kernelclient.Clients {
+func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),
 		BaseURL:   os.Getenv(EnvBaseURL),
