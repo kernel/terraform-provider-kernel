@@ -111,7 +111,7 @@ Durable fields include:
 - `size`
 - `profile_id`
 - `proxy_id`
-- `extension_ids`
+- ordered `extension_ids`
 - `chrome_policy`
 - `viewport`
 - `headless`
@@ -123,11 +123,13 @@ Durable fields include:
 
 Runtime fields are intentionally excluded, including acquired counts, available counts, standby state, lease state, and session state.
 
-Optional fields should not adopt remote API defaults into Terraform state when the user did not configure them. That avoids turning API defaults into Terraform-managed drift.
+Durable fields with server defaults use Terraform `Optional + Computed` semantics so create/read/import can round-trip API-defaulted durable configuration without future preserve-null special cases. Runtime fields are still excluded rather than modeled as computed attributes.
 
 `profile_save_changes` is intentionally omitted in v0 because the browser pool API currently rejects it for browser pools.
 
 `chrome_policy` stays normalized at the Terraform boundary as a JSON object string with Terraform semantic equality for equivalent JSON objects. It is decoded into the SDK shape only at the final SDK call boundary.
+
+`extension_ids` is modeled as an ordered list because Kernel persists extension `load_order`.
 
 ## Data Source Model
 

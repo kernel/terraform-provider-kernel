@@ -1,19 +1,16 @@
 package browserpool
 
-import (
-	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-)
+import "github.com/hashicorp/terraform-plugin-framework/types"
 
-type BrowserPoolModel struct {
+type browserPoolModel struct {
 	ID                types.String      `tfsdk:"id"`
 	Name              types.String      `tfsdk:"name"`
 	ProjectID         types.String      `tfsdk:"project_id"`
 	Size              types.Int64       `tfsdk:"size"`
 	ProfileID         types.String      `tfsdk:"profile_id"`
 	ProxyID           types.String      `tfsdk:"proxy_id"`
-	ExtensionIDs      types.Set         `tfsdk:"extension_ids"`
-	ChromePolicy      ChromePolicyValue `tfsdk:"chrome_policy"`
+	ExtensionIDs      types.List        `tfsdk:"extension_ids"`
+	ChromePolicy      chromePolicyValue `tfsdk:"chrome_policy"`
 	Viewport          types.Object      `tfsdk:"viewport"`
 	Headless          types.Bool        `tfsdk:"headless"`
 	KioskMode         types.Bool        `tfsdk:"kiosk_mode"`
@@ -23,16 +20,8 @@ type BrowserPoolModel struct {
 	FillRatePerMinute types.Int64       `tfsdk:"fill_rate_per_minute"`
 }
 
-type ViewportModel struct {
+type viewportModel struct {
 	Width       types.Int64 `tfsdk:"width"`
 	Height      types.Int64 `tfsdk:"height"`
 	RefreshRate types.Int64 `tfsdk:"refresh_rate"`
-}
-
-func viewportAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"width":        types.Int64Type,
-		"height":       types.Int64Type,
-		"refresh_rate": types.Int64Type,
-	}
 }

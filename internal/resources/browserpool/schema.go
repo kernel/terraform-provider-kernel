@@ -1,6 +1,9 @@
 package browserpool
 
 import (
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -36,41 +39,43 @@ func BrowserPoolSchema() rschema.Schema {
 					stringplanmodifier.RequiresReplace(),
 				},
 				Validators: []validator.String{
-					nonEmptyStringValidator{attributeName: "project_id"},
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"size": rschema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Number of browsers to maintain in the pool.",
 				Validators: []validator.Int64{
-					int64AtLeast(minBrowserPoolSize),
+					int64validator.AtLeast(minBrowserPoolSize),
 				},
 			},
 			"profile_id": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Optional profile ID to load for browsers created by this pool.",
 				Validators: []validator.String{
-					nonEmptyStringValidator{attributeName: "profile_id"},
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"proxy_id": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Optional proxy ID to use for browsers created by this pool.",
 				Validators: []validator.String{
-					nonEmptyStringValidator{attributeName: "proxy_id"},
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
-			"extension_ids": rschema.SetAttribute{
+			"extension_ids": rschema.ListAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "Stable set of extension IDs to load into browsers created by this pool.",
-				Validators: []validator.Set{
-					nonEmptyStringSetValidator{},
+				MarkdownDescription: "Ordered extension IDs to load into browsers created by this pool.",
+				Validators: []validator.List{
+					listvalidator.SizeAtMost(maxBrowserPoolExtensions),
+					listvalidator.NoNullValues(),
+					listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
 				},
 			},
 			"chrome_policy": rschema.StringAttribute{
 				Optional:            true,
-				CustomType:          ChromePolicyType{},
+				CustomType:          chromePolicyType{},
 				MarkdownDescription: "Normalized JSON object containing Chrome enterprise policy overrides.",
 				Validators: []validator.String{
 					chromePolicyJSONValidator{},
@@ -84,56 +89,63 @@ func BrowserPoolSchema() rschema.Schema {
 						Required:            true,
 						MarkdownDescription: "Browser window width in pixels.",
 						Validators: []validator.Int64{
-							int64AtLeast(minViewportDimension),
+							int64validator.AtLeast(minViewportDimension),
 						},
 					},
 					"height": rschema.Int64Attribute{
 						Required:            true,
 						MarkdownDescription: "Browser window height in pixels.",
 						Validators: []validator.Int64{
-							int64AtLeast(minViewportDimension),
+							int64validator.AtLeast(minViewportDimension),
 						},
 					},
 					"refresh_rate": rschema.Int64Attribute{
 						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Optional display refresh rate in Hz.",
 						Validators: []validator.Int64{
-							int64AtLeast(minViewportRefreshRate),
+							int64validator.AtLeast(minViewportRefreshRate),
 						},
 					},
 				},
 			},
 			"headless": rschema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Launch browsers using a headless image.",
 			},
 			"kiosk_mode": rschema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Launch browsers in kiosk mode.",
 			},
 			"stealth": rschema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Launch browsers in stealth mode.",
 			},
 			"start_url": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Optional URL to navigate to when a browser is warmed into the pool.",
 				Validators: []validator.String{
-					nonEmptyStringValidator{attributeName: "start_url"},
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.LengthAtMost(maxStartURLBytes),
 				},
 			},
 			"timeout_seconds": rschema.Int64Attribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Default idle timeout in seconds for acquired browsers.",
 				Validators: []validator.Int64{
-					int64Between(minTimeoutSeconds, maxTimeoutSeconds),
+					int64validator.Between(minTimeoutSeconds, maxTimeoutSeconds),
 				},
 			},
 			"fill_rate_per_minute": rschema.Int64Attribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Percentage of the pool to fill per minute.",
 				Validators: []validator.Int64{
-					int64AtLeast(minFillRatePerMinute),
+					int64validator.AtLeast(minFillRatePerMinute),
 				},
 			},
 		},
