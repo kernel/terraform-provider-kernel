@@ -20,7 +20,7 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				MarkdownDescription: "Optional browser pool name. Must be unique within the project.",
 				Validators: []validator.String{
-					nonEmptyStringValidator{attributeName: "name"},
+					browserPoolNameValidator{},
 				},
 			},
 			"project_id": rschema.StringAttribute{
@@ -53,10 +53,6 @@ func BrowserPoolSchema() rschema.Schema {
 					nonEmptyStringValidator{attributeName: "profile_id"},
 				},
 			},
-			"profile_save_changes": rschema.BoolAttribute{
-				Optional:            true,
-				MarkdownDescription: "Persist browser changes back to the configured profile when supported by the profile.",
-			},
 			"proxy_id": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Optional proxy ID to use for browsers created by this pool.",
@@ -74,6 +70,7 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"chrome_policy": rschema.StringAttribute{
 				Optional:            true,
+				CustomType:          ChromePolicyType{},
 				MarkdownDescription: "Normalized JSON object containing Chrome enterprise policy overrides.",
 				Validators: []validator.String{
 					chromePolicyJSONValidator{},
@@ -129,14 +126,14 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				MarkdownDescription: "Default idle timeout in seconds for acquired browsers.",
 				Validators: []validator.Int64{
-					int64AtLeast(minTimeoutSeconds),
+					int64Between(minTimeoutSeconds, maxTimeoutSeconds),
 				},
 			},
 			"fill_rate_per_minute": rschema.Int64Attribute{
 				Optional:            true,
 				MarkdownDescription: "Percentage of the pool to fill per minute.",
 				Validators: []validator.Int64{
-					int64Between(minFillRatePerMinute, maxFillRatePerMinute),
+					int64AtLeast(minFillRatePerMinute),
 				},
 			},
 		},

@@ -6,22 +6,21 @@ import (
 )
 
 type BrowserPoolModel struct {
-	ID                 types.String `tfsdk:"id"`
-	Name               types.String `tfsdk:"name"`
-	ProjectID          types.String `tfsdk:"project_id"`
-	Size               types.Int64  `tfsdk:"size"`
-	ProfileID          types.String `tfsdk:"profile_id"`
-	ProfileSaveChanges types.Bool   `tfsdk:"profile_save_changes"`
-	ProxyID            types.String `tfsdk:"proxy_id"`
-	ExtensionIDs       types.Set    `tfsdk:"extension_ids"`
-	ChromePolicy       types.String `tfsdk:"chrome_policy"`
-	Viewport           types.Object `tfsdk:"viewport"`
-	Headless           types.Bool   `tfsdk:"headless"`
-	KioskMode          types.Bool   `tfsdk:"kiosk_mode"`
-	Stealth            types.Bool   `tfsdk:"stealth"`
-	StartURL           types.String `tfsdk:"start_url"`
-	TimeoutSeconds     types.Int64  `tfsdk:"timeout_seconds"`
-	FillRatePerMinute  types.Int64  `tfsdk:"fill_rate_per_minute"`
+	ID                types.String      `tfsdk:"id"`
+	Name              types.String      `tfsdk:"name"`
+	ProjectID         types.String      `tfsdk:"project_id"`
+	Size              types.Int64       `tfsdk:"size"`
+	ProfileID         types.String      `tfsdk:"profile_id"`
+	ProxyID           types.String      `tfsdk:"proxy_id"`
+	ExtensionIDs      types.Set         `tfsdk:"extension_ids"`
+	ChromePolicy      ChromePolicyValue `tfsdk:"chrome_policy"`
+	Viewport          types.Object      `tfsdk:"viewport"`
+	Headless          types.Bool        `tfsdk:"headless"`
+	KioskMode         types.Bool        `tfsdk:"kiosk_mode"`
+	Stealth           types.Bool        `tfsdk:"stealth"`
+	StartURL          types.String      `tfsdk:"start_url"`
+	TimeoutSeconds    types.Int64       `tfsdk:"timeout_seconds"`
+	FillRatePerMinute types.Int64       `tfsdk:"fill_rate_per_minute"`
 }
 
 type ViewportModel struct {

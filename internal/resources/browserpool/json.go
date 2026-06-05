@@ -41,29 +41,6 @@ func NormalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
 	return string(normalized), diags
 }
 
-func decodeChromePolicyJSON(input string) (map[string]any, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	var policy map[string]any
-
-	if err := decodeChromePolicy(input, &policy); err != nil {
-		diags.AddError(
-			"Invalid Chrome Policy JSON",
-			"chrome_policy must be valid JSON object syntax: "+err.Error(),
-		)
-		return nil, diags
-	}
-
-	if policy == nil {
-		diags.AddError(
-			"Invalid Chrome Policy JSON",
-			"chrome_policy must be a JSON object.",
-		)
-		return nil, diags
-	}
-
-	return policy, diags
-}
-
 func decodeChromePolicy(input string, policy *map[string]any) error {
 	decoder := json.NewDecoder(strings.NewReader(input))
 	decoder.UseNumber()

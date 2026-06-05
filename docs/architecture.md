@@ -110,7 +110,6 @@ Durable fields include:
 - `name`
 - `size`
 - `profile_id`
-- `profile_save_changes`
 - `proxy_id`
 - `extension_ids`
 - `chrome_policy`
@@ -126,7 +125,9 @@ Runtime fields are intentionally excluded, including acquired counts, available 
 
 Optional fields should not adopt remote API defaults into Terraform state when the user did not configure them. That avoids turning API defaults into Terraform-managed drift.
 
-`chrome_policy` stays normalized at the Terraform boundary as a JSON object string. It is decoded into the SDK shape only at the final SDK call boundary.
+`profile_save_changes` is intentionally omitted in v0 because the browser pool API currently rejects it for browser pools.
+
+`chrome_policy` stays normalized at the Terraform boundary as a JSON object string with Terraform semantic equality for equivalent JSON objects. It is decoded into the SDK shape only at the final SDK call boundary.
 
 ## Data Source Model
 

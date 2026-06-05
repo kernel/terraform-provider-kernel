@@ -1,8 +1,10 @@
 package browserpool
 
 import (
-	"encoding/json"
+	"context"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 func TestNormalizeChromePolicyJSON(t *testing.T) {
@@ -39,17 +41,40 @@ func TestChromePolicyJSONPreservesLargeNumbers(t *testing.T) {
 	if got != input {
 		t.Fatalf("normalized JSON mismatch\ngot:  %s\nwant: %s", got, input)
 	}
+}
 
-	policy, diags := decodeChromePolicyJSON(input)
+func TestChromePolicyTypeNormalizesKnownValue(t *testing.T) {
+	got, diags := ChromePolicyType{}.ValueFromString(context.Background(), basetypes.NewStringValue(`{
+		"B": 2,
+		"A": 1
+	}`))
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	number, ok := policy["LargeInteger"].(json.Number)
-	if !ok {
-		t.Fatalf("LargeInteger has type %T, want json.Number", policy["LargeInteger"])
+
+	stringValue, diags := got.ToStringValue(context.Background())
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	if number.String() != "9007199254740993" {
-		t.Fatalf("LargeInteger = %s, want exact JSON number", number.String())
+
+	if stringValue.ValueString() != `{"A":1,"B":2}` {
+		t.Fatalf("normalized value = %q, want canonical JSON object", stringValue.ValueString())
+	}
+}
+
+func TestChromePolicyValueSemanticEquals(t *testing.T) {
+	left := ChromePolicyValue{StringValue: basetypes.NewStringValue(`{"B":2,"A":1}`)}
+	right := basetypes.NewStringValue(`{
+		"A": 1,
+		"B": 2
+	}`)
+
+	equal, diags := left.StringSemanticEquals(context.Background(), right)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !equal {
+		t.Fatal("expected semantically equivalent JSON objects to compare equal")
 	}
 }
 
