@@ -2,6 +2,9 @@ package browserpool
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -20,6 +23,7 @@ type browserPoolClient interface {
 	CreateBrowserPool(context.Context, string, kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error)
 	GetBrowserPool(context.Context, string, string) (*kernel.BrowserPool, error)
 	UpdateBrowserPool(context.Context, string, string, kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error)
+	DeleteBrowserPool(context.Context, string, string) error
 }
 
 type browserPoolResource struct {
@@ -28,6 +32,10 @@ type browserPoolResource struct {
 
 func newResourceWithClient(client browserPoolClient) *browserPoolResource {
 	return &browserPoolResource{client: client}
+}
+
+func NewResource() resource.Resource {
+	return &browserPoolResource{}
 }
 
 func (r *browserPoolResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -114,10 +122,13 @@ func (r *browserPoolResource) Update(ctx context.Context, req resource.UpdateReq
 }
 
 func (r *browserPoolResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	resp.Diagnostics.AddError(
-		"Kernel Browser Pool Delete Not Implemented",
-		"Delete support is intentionally left for the browser pool update/delete slice.",
-	)
+	var state browserPoolModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.delete(ctx, state)...)
 }
 
 func (r *browserPoolResource) create(ctx context.Context, plan browserPoolModel) (browserPoolModel, diag.Diagnostics) {
@@ -199,6 +210,36 @@ func (r *browserPoolResource) update(ctx context.Context, plan, state browserPoo
 	return nextState, diags
 }
 
+func (r *browserPoolResource) delete(ctx context.Context, state browserPoolModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if r.client == nil {
+		addMissingClientDiagnostic(&diags)
+		return diags
+	}
+
+	id, ok := stateBrowserPoolID(state, "delete", &diags)
+	if !ok {
+		return diags
+	}
+
+	projectID := state.ProjectID.ValueString()
+	if err := r.client.DeleteBrowserPool(ctx, projectID, id); err != nil {
+		if projectscope.IsNotFound(err) {
+			return diags
+		}
+		if browserPoolDeleteConflict(err) {
+			diags.AddError(
+				"Delete Kernel Browser Pool",
+				"Kernel refused to delete browser pool "+id+" because one or more browsers are currently leased. Terraform will not force-delete leased browsers. Release active browsers and retry.",
+			)
+			return diags
+		}
+		projectscope.AddError(&diags, "Delete Kernel Browser Pool", projectID, err)
+	}
+
+	return diags
+}
+
 func (r *browserPoolResource) read(ctx context.Context, state browserPoolModel) (browserPoolModel, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
@@ -241,6 +282,25 @@ func stateBrowserPoolID(state browserPoolModel, operation string, diags *diag.Di
 	}
 
 	return state.ID.ValueString(), true
+}
+
+func browserPoolDeleteConflict(err error) bool {
+	var apiError *kernel.Error
+	if !errors.As(err, &apiError) || apiError.StatusCode != http.StatusBadRequest {
+		return false
+	}
+
+	var body struct {
+		Code  string `json:"code"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(apiError.RawJSON()), &body) != nil {
+		return false
+	}
+
+	return body.Code == "pool_in_use" || body.Error.Code == "pool_in_use"
 }
 
 func addMissingClientDiagnostic(diags *diag.Diagnostics) {

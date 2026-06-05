@@ -41,6 +41,7 @@ type fakeBrowserPoolClient struct {
 	create           func(context.Context, string, kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error)
 	get              func(context.Context, string, string) (*kernel.BrowserPool, error)
 	update           func(context.Context, string, string, kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error)
+	delete           func(context.Context, string, string) error
 }
 
 func (f fakeBrowserPoolClient) DefaultProjectID() string {
@@ -66,6 +67,13 @@ func (f fakeBrowserPoolClient) UpdateBrowserPool(ctx context.Context, projectID,
 		return nil, errors.New("unexpected update")
 	}
 	return f.update(ctx, projectID, id, params)
+}
+
+func (f fakeBrowserPoolClient) DeleteBrowserPool(ctx context.Context, projectID, id string) error {
+	if f.delete == nil {
+		return errors.New("unexpected delete")
+	}
+	return f.delete(ctx, projectID, id)
 }
 
 func TestResourceMetadataAndSchema(t *testing.T) {
@@ -635,5 +643,104 @@ func TestUpdateBrowserPoolRejectsMissingStateID(t *testing.T) {
 	}
 	if called {
 		t.Fatal("UpdateBrowserPool was called for missing id")
+	}
+}
+
+func TestDeleteBrowserPoolDeletesStateID(t *testing.T) {
+	t.Parallel()
+
+	var gotID, gotProjectID string
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		defaultProjectID: "proj_default",
+		delete: func(ctx context.Context, projectID, id string) error {
+			gotProjectID = projectID
+			gotID = id
+			return nil
+		},
+	})
+
+	diags := r.delete(context.Background(), browserPoolModel{
+		ID:        types.StringValue("pool-1"),
+		ProjectID: types.StringValue("proj_a"),
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if gotID != "pool-1" {
+		t.Fatalf("DeleteBrowserPool id = %q, want pool-1", gotID)
+	}
+	if gotProjectID != "proj_a" {
+		t.Fatalf("delete project = %q, want proj_a from state", gotProjectID)
+	}
+}
+
+func TestDeleteBrowserPoolTreatsNotFoundAsSuccess(t *testing.T) {
+	t.Parallel()
+
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		delete: func(ctx context.Context, projectID, id string) error {
+			return apiErrorForTest(t, http.StatusNotFound, `{"code":"not_found","message":"browser pool not found"}`)
+		},
+	})
+
+	diags := r.delete(context.Background(), browserPoolModel{ID: types.StringValue("pool-1")})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+}
+
+func TestDeleteBrowserPoolReturnsLeasedBrowserConflictDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		delete: func(ctx context.Context, projectID, id string) error {
+			return apiErrorForTest(t, http.StatusBadRequest, `{"code":"pool_in_use","message":"Cannot delete pool. 1 browser(s) are currently in use."}`)
+		},
+	})
+
+	diags := r.delete(context.Background(), browserPoolModel{ID: types.StringValue("pool-1")})
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for leased browser conflict")
+	}
+	if got := diags[0].Detail(); got != "Kernel refused to delete browser pool pool-1 because one or more browsers are currently leased. Terraform will not force-delete leased browsers. Release active browsers and retry." {
+		t.Fatalf("diagnostic detail = %q", got)
+	}
+}
+
+func TestDeleteBrowserPoolDoesNotTreatGenericBadRequestAsLeasedConflict(t *testing.T) {
+	t.Parallel()
+
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		delete: func(ctx context.Context, projectID, id string) error {
+			return apiErrorForTest(t, http.StatusBadRequest, `{"code":"invalid_request","message":"generic bad request"}`)
+		},
+	})
+
+	diags := r.delete(context.Background(), browserPoolModel{ID: types.StringValue("pool-1")})
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for bad request")
+	}
+	if got := diags[0].Detail(); got == "Kernel refused to delete browser pool pool-1 because one or more browsers are currently leased. Terraform will not force-delete leased browsers. Release active browsers and retry." {
+		t.Fatal("generic bad request was reported as leased browser conflict")
+	}
+}
+
+func TestDeleteBrowserPoolRejectsMissingStateID(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		delete: func(ctx context.Context, projectID, id string) error {
+			called = true
+			return errors.New("should not call delete")
+		},
+	})
+
+	diags := r.delete(context.Background(), browserPoolModel{ID: types.StringNull()})
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for missing id")
+	}
+	if called {
+		t.Fatal("DeleteBrowserPool was called for missing id")
 	}
 }
