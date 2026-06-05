@@ -21,25 +21,17 @@ var _ projectClient = kernelclient.Clients{}
 type fakeProjectClient struct {
 	defaultProjectID string
 	get              func(context.Context, string) (*kernel.Project, error)
-	list             func(context.Context, string, int64) (kernelclient.ProjectPage, error)
 }
 
 func (f fakeProjectClient) DefaultProjectID() string {
 	return f.defaultProjectID
 }
 
-func (f fakeProjectClient) GetProject(ctx context.Context, id string) (*kernel.Project, error) {
+func (f fakeProjectClient) GetProject(ctx context.Context, idOrName string) (*kernel.Project, error) {
 	if f.get == nil {
-		return nil, errors.New("unexpected get")
+		return nil, errors.New("unexpected GetProject call")
 	}
-	return f.get(ctx, id)
-}
-
-func (f fakeProjectClient) ListProjectPage(ctx context.Context, query string, offset int64) (kernelclient.ProjectPage, error) {
-	if f.list == nil {
-		return kernelclient.ProjectPage{}, errors.New("unexpected list")
-	}
-	return f.list(ctx, query, offset)
+	return f.get(ctx, idOrName)
 }
 
 func TestDataSourceMetadataAndSchema(t *testing.T) {
@@ -94,9 +86,10 @@ func TestReadSetsTerraformState(t *testing.T) {
 	t.Parallel()
 
 	ds := newDataSourceWithClient(fakeProjectClient{
-		list: listProjectPages(t, "Target", map[int64]kernelclient.ProjectPage{
-			0: projectPage(projectForTest("project-target", "Target")),
-		}),
+		get: func(ctx context.Context, id string) (*kernel.Project, error) {
+			project := projectForTest("project-target", "Target")
+			return &project, nil
+		},
 	})
 
 	var schemaResp datasource.SchemaResponse
@@ -133,57 +126,42 @@ func TestReadSetsTerraformState(t *testing.T) {
 	}
 }
 
-func TestReadLooksUpExactProjectName(t *testing.T) {
+func TestReadLooksUpProjectByName(t *testing.T) {
 	t.Parallel()
 
+	var gotIDOrName string
 	ds := newDataSourceWithClient(fakeProjectClient{
-		list: listProjectPages(t, "Target", map[int64]kernelclient.ProjectPage{
-			0:   projectPageWithNext(100, projectForTest("project-other", "Other")),
-			100: projectPage(projectForTest("project-target", "Target")),
-		}),
+		get: func(ctx context.Context, id string) (*kernel.Project, error) {
+			gotIDOrName = id
+			project := projectForTest("project-target", "Target")
+			return &project, nil
+		},
 	})
 
 	state, diags := ds.read(context.Background(), projectModel{Name: types.StringValue("Target")})
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
+	if gotIDOrName != "Target" {
+		t.Fatalf("GetProject id = %q, want Target (server resolves name)", gotIDOrName)
+	}
 	if state.ID.ValueString() != "project-target" {
 		t.Fatalf("state id = %q, want project-target", state.ID.ValueString())
 	}
 }
 
-func TestReadRejectsAmbiguousProjectName(t *testing.T) {
+func TestReadRejectsProjectNotFound(t *testing.T) {
 	t.Parallel()
 
 	ds := newDataSourceWithClient(fakeProjectClient{
-		list: listProjectPages(t, "Target", map[int64]kernelclient.ProjectPage{
-			0:   projectPageWithNext(100, projectForTest("project-a", "Target")),
-			100: projectPage(projectForTest("project-b", "Target")),
-		}),
+		get: func(ctx context.Context, id string) (*kernel.Project, error) {
+			return nil, errors.New("404 Not Found: project not found")
+		},
 	})
 
-	_, diags := ds.read(context.Background(), projectModel{Name: types.StringValue("Target")})
+	_, diags := ds.read(context.Background(), projectModel{Name: types.StringValue("Missing")})
 	if !diags.HasError() {
-		t.Fatal("expected diagnostics for ambiguous project name")
-	}
-}
-
-func TestReadRejectsInvalidProjectLookupCandidate(t *testing.T) {
-	t.Parallel()
-
-	invalid := projectForTest("project-invalid", "Target")
-	invalid.Name = "123"
-	invalid.JSON.Name = respjson.NewInvalidField("123")
-
-	ds := newDataSourceWithClient(fakeProjectClient{
-		list: listProjectPages(t, "Target", map[int64]kernelclient.ProjectPage{
-			0: projectPage(invalid),
-		}),
-	})
-
-	_, diags := ds.read(context.Background(), projectModel{Name: types.StringValue("Target")})
-	if !diags.HasError() {
-		t.Fatal("expected diagnostics for invalid project lookup candidate")
+		t.Fatal("expected diagnostics for a not-found project")
 	}
 }
 
@@ -298,32 +276,4 @@ func projectConfigValue(id, name tftypes.Value) tftypes.Value {
 			"updated_at": tftypes.NewValue(tftypes.String, nil),
 		},
 	)
-}
-
-func listProjectPages(t *testing.T, wantQuery string, pages map[int64]kernelclient.ProjectPage) func(context.Context, string, int64) (kernelclient.ProjectPage, error) {
-	t.Helper()
-
-	return func(ctx context.Context, query string, offset int64) (kernelclient.ProjectPage, error) {
-		if query != wantQuery {
-			t.Fatalf("ListProjectPage query = %q, want %q", query, wantQuery)
-		}
-
-		page, ok := pages[offset]
-		if !ok {
-			t.Fatalf("unexpected project page offset: %d", offset)
-		}
-		return page, nil
-	}
-}
-
-func projectPage(projects ...kernel.Project) kernelclient.ProjectPage {
-	return kernelclient.ProjectPage{Items: projects}
-}
-
-func projectPageWithNext(nextOffset int64, projects ...kernel.Project) kernelclient.ProjectPage {
-	return kernelclient.ProjectPage{
-		Items:       projects,
-		NextOffset:  nextOffset,
-		HasNextPage: true,
-	}
 }

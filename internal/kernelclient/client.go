@@ -15,11 +15,13 @@ const DefaultRequestTimeout = 2 * time.Minute
 
 const nameLookupLimit int64 = 100
 
-type ProjectPage struct {
-	Items       []kernel.Project
+type Page[T any] struct {
+	Items       []T
 	NextOffset  int64
 	HasNextPage bool
 }
+
+type ProfilePage = Page[kernel.Profile]
 
 // Config configures the shared Kernel API clients. ProjectID is a default
 // only; the client never applies it implicitly.
@@ -75,37 +77,10 @@ func (c Clients) DefaultProjectID() string {
 
 // Projects are org-scoped, so their methods take no project.
 
-func (c Clients) GetProject(ctx context.Context, id string) (*kernel.Project, error) {
-	return c.projects.Get(ctx, id)
-}
-
-func (c Clients) ListProjectPage(ctx context.Context, query string, offset int64) (ProjectPage, error) {
-	var raw *http.Response
-	params := kernel.ProjectListParams{
-		Query: kernel.String(query),
-		Limit: kernel.Int(nameLookupLimit),
-	}
-	if offset > 0 {
-		params.Offset = kernel.Int(offset)
-	}
-
-	page, err := c.projects.List(ctx, params, option.WithResponseInto(&raw))
-	if err != nil {
-		return ProjectPage{}, err
-	}
-	if page == nil {
-		return ProjectPage{}, fmt.Errorf("Kernel returned an empty project list response")
-	}
-
-	next, ok, err := projectLookupNextOffset(raw, offset)
-	if err != nil {
-		return ProjectPage{}, err
-	}
-	return ProjectPage{
-		Items:       page.Items,
-		NextOffset:  next,
-		HasNextPage: ok,
-	}, nil
+// GetProject resolves a project by ID or by name; the API treats the path
+// parameter as id-or-name (names are unique within an organization).
+func (c Clients) GetProject(ctx context.Context, idOrName string) (*kernel.Project, error) {
+	return c.projects.Get(ctx, idOrName)
 }
 
 // The remaining methods are project-scoped and take the resolved project
@@ -117,6 +92,35 @@ func (c Clients) GetProxy(ctx context.Context, projectID, id string) (*kernel.Pr
 
 func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*kernel.Profile, error) {
 	return c.profiles.Get(ctx, idOrName, scope(projectID)...)
+}
+
+func (c Clients) ListProfilePage(ctx context.Context, projectID, query string, offset int64) (ProfilePage, error) {
+	var raw *http.Response
+	params := kernel.ProfileListParams{
+		Query: kernel.String(query),
+		Limit: kernel.Int(nameLookupLimit),
+	}
+	if offset > 0 {
+		params.Offset = kernel.Int(offset)
+	}
+
+	page, err := c.profiles.List(ctx, params, scope(projectID, option.WithResponseInto(&raw))...)
+	if err != nil {
+		return ProfilePage{}, err
+	}
+	if page == nil {
+		return ProfilePage{}, fmt.Errorf("Kernel returned an empty profile list response")
+	}
+
+	next, ok, err := lookupNextOffset(raw, offset, "profile")
+	if err != nil {
+		return ProfilePage{}, err
+	}
+	return ProfilePage{
+		Items:       page.Items,
+		NextOffset:  next,
+		HasNextPage: ok,
+	}, nil
 }
 
 func (c Clients) CreateBrowserPool(ctx context.Context, projectID string, params kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error) {
@@ -150,13 +154,21 @@ func noMutationRetries() option.RequestOption {
 	return option.WithMaxRetries(0)
 }
 
-func projectLookupNextOffset(raw *http.Response, current int64) (int64, bool, error) {
+func lookupNextOffset(raw *http.Response, current int64, kind string) (int64, bool, error) {
 	if raw == nil {
 		return 0, false, fmt.Errorf("Kernel returned an empty pagination response")
 	}
 
+	hasMore, err := lookupHasMore(raw, kind)
+	if err != nil {
+		return 0, false, err
+	}
+
 	value := raw.Header.Get("X-Next-Offset")
 	if value == "" {
+		if hasMore {
+			return 0, false, fmt.Errorf("Kernel %s pagination reported more results without a next offset", kind)
+		}
 		return 0, false, nil
 	}
 
@@ -165,17 +177,34 @@ func projectLookupNextOffset(raw *http.Response, current int64) (int64, bool, er
 		return 0, false, fmt.Errorf("invalid Kernel pagination next offset %q: %w", value, err)
 	}
 	if next <= 0 {
+		if hasMore {
+			return 0, false, fmt.Errorf("Kernel %s pagination reported more results with non-positive next offset %d", kind, next)
+		}
 		return 0, false, nil
 	}
 	if next <= current {
 		return 0, false, fmt.Errorf(
-			"non-advancing Kernel project pagination: current offset %d, next offset %d",
+			"non-advancing Kernel %s pagination: current offset %d, next offset %d",
+			kind,
 			current,
 			next,
 		)
 	}
 
 	return next, true, nil
+}
+
+func lookupHasMore(raw *http.Response, kind string) (bool, error) {
+	value := raw.Header.Get("X-Has-More")
+	if value == "" {
+		return false, nil
+	}
+
+	hasMore, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("invalid Kernel %s pagination has-more %q: %w", kind, value, err)
+	}
+	return hasMore, nil
 }
 
 func requestOptions(config Config, clientOpts clientOptions) []option.RequestOption {
