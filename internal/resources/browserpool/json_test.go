@@ -8,7 +8,7 @@ import (
 )
 
 func TestNormalizeChromePolicyJSON(t *testing.T) {
-	got, diags := NormalizeChromePolicyJSON(`{
+	got, diags := normalizeChromePolicyJSON(`{
 		"HomepageLocation": "https://example.com",
 		"RestoreOnStartup": 4,
 		"Nested": {"enabled": true}
@@ -22,7 +22,7 @@ func TestNormalizeChromePolicyJSON(t *testing.T) {
 		t.Fatalf("normalized JSON mismatch\ngot:  %s\nwant: %s", got, want)
 	}
 
-	gotAgain, diags := NormalizeChromePolicyJSON(`{"RestoreOnStartup":4,"Nested":{"enabled":true},"HomepageLocation":"https://example.com"}`)
+	gotAgain, diags := normalizeChromePolicyJSON(`{"RestoreOnStartup":4,"Nested":{"enabled":true},"HomepageLocation":"https://example.com"}`)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -34,7 +34,7 @@ func TestNormalizeChromePolicyJSON(t *testing.T) {
 func TestChromePolicyJSONPreservesLargeNumbers(t *testing.T) {
 	input := `{"LargeInteger":9007199254740993}`
 
-	got, diags := NormalizeChromePolicyJSON(input)
+	got, diags := normalizeChromePolicyJSON(input)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -44,7 +44,7 @@ func TestChromePolicyJSONPreservesLargeNumbers(t *testing.T) {
 }
 
 func TestChromePolicyTypeNormalizesKnownValue(t *testing.T) {
-	got, diags := ChromePolicyType{}.ValueFromString(context.Background(), basetypes.NewStringValue(`{
+	got, diags := chromePolicyType{}.ValueFromString(context.Background(), basetypes.NewStringValue(`{
 		"B": 2,
 		"A": 1
 	}`))
@@ -63,7 +63,7 @@ func TestChromePolicyTypeNormalizesKnownValue(t *testing.T) {
 }
 
 func TestChromePolicyValueSemanticEquals(t *testing.T) {
-	left := ChromePolicyValue{StringValue: basetypes.NewStringValue(`{"B":2,"A":1}`)}
+	left := chromePolicyValue{StringValue: basetypes.NewStringValue(`{"B":2,"A":1}`)}
 	right := basetypes.NewStringValue(`{
 		"A": 1,
 		"B": 2
@@ -87,8 +87,8 @@ func TestNormalizeChromePolicyJSONRejectsInvalidAndNonObject(t *testing.T) {
 		`{"A":1}{"B":2}`,
 	} {
 		t.Run(input, func(t *testing.T) {
-			if got, diags := NormalizeChromePolicyJSON(input); !diags.HasError() {
-				t.Fatalf("NormalizeChromePolicyJSON(%q) = %q without error", input, got)
+			if got, diags := normalizeChromePolicyJSON(input); !diags.HasError() {
+				t.Fatalf("normalizeChromePolicyJSON(%q) = %q without error", input, got)
 			}
 		})
 	}

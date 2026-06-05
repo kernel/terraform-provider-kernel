@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
-func NormalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
+func normalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	var policy map[string]any
 

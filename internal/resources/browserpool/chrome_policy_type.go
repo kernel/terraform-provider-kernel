@@ -11,37 +11,37 @@ import (
 )
 
 var (
-	_ basetypes.StringTypable                    = ChromePolicyType{}
-	_ basetypes.StringValuableWithSemanticEquals = ChromePolicyValue{}
+	_ basetypes.StringTypable                    = chromePolicyType{}
+	_ basetypes.StringValuableWithSemanticEquals = chromePolicyValue{}
 )
 
-type ChromePolicyType struct {
+type chromePolicyType struct {
 	basetypes.StringType
 }
 
-func (t ChromePolicyType) Equal(other attr.Type) bool {
-	_, ok := other.(ChromePolicyType)
+func (t chromePolicyType) Equal(other attr.Type) bool {
+	_, ok := other.(chromePolicyType)
 	return ok
 }
 
-func (t ChromePolicyType) String() string {
-	return "browserpool.ChromePolicyType"
+func (t chromePolicyType) String() string {
+	return "browserpool.chromePolicyType"
 }
 
-func (t ChromePolicyType) ValueFromString(ctx context.Context, value basetypes.StringValue) (basetypes.StringValuable, diag.Diagnostics) {
+func (t chromePolicyType) ValueFromString(ctx context.Context, value basetypes.StringValue) (basetypes.StringValuable, diag.Diagnostics) {
 	if value.IsNull() || value.IsUnknown() {
-		return ChromePolicyValue{StringValue: value}, nil
+		return chromePolicyValue{StringValue: value}, nil
 	}
 
-	normalized, diags := NormalizeChromePolicyJSON(value.ValueString())
+	normalized, diags := normalizeChromePolicyJSON(value.ValueString())
 	if diags.HasError() {
-		return ChromePolicyValue{StringValue: value}, diags
+		return chromePolicyValue{StringValue: value}, diags
 	}
 
-	return ChromePolicyValue{StringValue: basetypes.NewStringValue(normalized)}, nil
+	return chromePolicyValue{StringValue: basetypes.NewStringValue(normalized)}, nil
 }
 
-func (t ChromePolicyType) ValueFromTerraform(ctx context.Context, value tftypes.Value) (attr.Value, error) {
+func (t chromePolicyType) ValueFromTerraform(ctx context.Context, value tftypes.Value) (attr.Value, error) {
 	attrValue, err := t.StringType.ValueFromTerraform(ctx, value)
 	if err != nil {
 		return nil, err
@@ -60,16 +60,16 @@ func (t ChromePolicyType) ValueFromTerraform(ctx context.Context, value tftypes.
 	return chromePolicy, nil
 }
 
-func (t ChromePolicyType) ValueType(ctx context.Context) attr.Value {
-	return ChromePolicyValue{}
+func (t chromePolicyType) ValueType(ctx context.Context) attr.Value {
+	return chromePolicyValue{}
 }
 
-type ChromePolicyValue struct {
+type chromePolicyValue struct {
 	basetypes.StringValue
 }
 
-func (v ChromePolicyValue) Equal(other attr.Value) bool {
-	otherValue, ok := other.(ChromePolicyValue)
+func (v chromePolicyValue) Equal(other attr.Value) bool {
+	otherValue, ok := other.(chromePolicyValue)
 	if !ok {
 		return false
 	}
@@ -77,15 +77,15 @@ func (v ChromePolicyValue) Equal(other attr.Value) bool {
 	return v.StringValue.Equal(otherValue.StringValue)
 }
 
-func (v ChromePolicyValue) StringSemanticEquals(ctx context.Context, other basetypes.StringValuable) (bool, diag.Diagnostics) {
+func (v chromePolicyValue) StringSemanticEquals(ctx context.Context, other basetypes.StringValuable) (bool, diag.Diagnostics) {
 	otherValue, diags := other.ToStringValue(ctx)
 	if diags.HasError() {
 		return false, diags
 	}
 
-	thisNormalized, thisDiags := NormalizeChromePolicyJSON(v.ValueString())
+	thisNormalized, thisDiags := normalizeChromePolicyJSON(v.ValueString())
 	diags.Append(thisDiags...)
-	otherNormalized, otherDiags := NormalizeChromePolicyJSON(otherValue.ValueString())
+	otherNormalized, otherDiags := normalizeChromePolicyJSON(otherValue.ValueString())
 	diags.Append(otherDiags...)
 	if diags.HasError() {
 		return false, diags
@@ -94,10 +94,6 @@ func (v ChromePolicyValue) StringSemanticEquals(ctx context.Context, other baset
 	return thisNormalized == otherNormalized, diags
 }
 
-func (v ChromePolicyValue) Type(ctx context.Context) attr.Type {
-	return ChromePolicyType{}
-}
-
-func ChromePolicyNull() ChromePolicyValue {
-	return ChromePolicyValue{StringValue: basetypes.NewStringNull()}
+func (v chromePolicyValue) Type(ctx context.Context) attr.Type {
+	return chromePolicyType{}
 }

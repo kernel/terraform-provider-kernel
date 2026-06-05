@@ -78,6 +78,27 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	assertInt64Attribute(t, s, "size", func(attr rschema.Int64Attribute) bool {
 		return attr.Required && !attr.Optional && !attr.Computed
 	})
+	assertBoolAttribute(t, s, "headless", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertBoolAttribute(t, s, "kiosk_mode", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertBoolAttribute(t, s, "stealth", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertInt64Attribute(t, s, "timeout_seconds", func(attr rschema.Int64Attribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertInt64Attribute(t, s, "fill_rate_per_minute", func(attr rschema.Int64Attribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+
+	viewport := singleNestedAttribute(t, s, "viewport")
+	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
+	if !refreshRate.Optional || !refreshRate.Computed || refreshRate.Required {
+		t.Fatalf("viewport.refresh_rate has unexpected flags: %#v", refreshRate)
+	}
 }
 
 func TestSchemaProjectIDSemantics(t *testing.T) {
@@ -165,12 +186,13 @@ func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 
 func TestSchemaValidatesChromePolicyJSON(t *testing.T) {
 	attr := stringAttribute(t, BrowserPoolSchema(), "chrome_policy")
-	if _, ok := attr.CustomType.(ChromePolicyType); !ok {
-		t.Fatalf("chrome_policy custom type is %T, want ChromePolicyType", attr.CustomType)
+	if _, ok := attr.CustomType.(chromePolicyType); !ok {
+		t.Fatalf("chrome_policy custom type is %T, want chromePolicyType", attr.CustomType)
 	}
 
 	assertStringRejects(t, attr, "chrome_policy", `{`)
 	assertStringRejects(t, attr, "chrome_policy", `[]`)
+	assertStringRejects(t, attr, "chrome_policy", `{"Large":"`+strings.Repeat("a", maxChromePolicyBytes)+`"}`)
 	assertStringAccepts(t, attr, "chrome_policy", `{"HomepageLocation":"https://example.com"}`)
 }
 
@@ -204,17 +226,19 @@ func TestSchemaValidatesStartURLNonEmpty(t *testing.T) {
 	attr := stringAttribute(t, BrowserPoolSchema(), "start_url")
 
 	assertStringRejects(t, attr, "start_url", "")
+	assertStringRejects(t, attr, "start_url", strings.Repeat("a", maxStartURLBytes+1))
+	assertStringAccepts(t, attr, "start_url", strings.Repeat("a", maxStartURLBytes))
 	assertStringAccepts(t, attr, "start_url", "https://example.com")
 }
 
 func TestSchemaValidatesExtensionIDsAreNonEmpty(t *testing.T) {
-	attr := setAttribute(t, BrowserPoolSchema(), "extension_ids")
+	attr := listAttribute(t, BrowserPoolSchema(), "extension_ids")
 
-	assertSetRejects(t, attr, "extension_ids", stringSet(types.StringValue("")))
-	assertSetRejects(t, attr, "extension_ids", stringSet(types.StringNull()))
-	assertSetRejects(t, attr, "extension_ids", extensionIDSet(21))
-	assertSetAccepts(t, attr, "extension_ids", stringSet(types.StringUnknown()))
-	assertSetAccepts(t, attr, "extension_ids", stringSet(types.StringValue("ext-1")))
+	assertListRejects(t, attr, "extension_ids", stringList(types.StringValue("")))
+	assertListRejects(t, attr, "extension_ids", stringList(types.StringNull()))
+	assertListRejects(t, attr, "extension_ids", extensionIDList(21))
+	assertListAccepts(t, attr, "extension_ids", stringList(types.StringUnknown()))
+	assertListAccepts(t, attr, "extension_ids", stringList(types.StringValue("ext-1")))
 }
 
 func assertStringAttribute(t *testing.T, s rschema.Schema, name string, check func(rschema.StringAttribute) bool) {
@@ -230,6 +254,15 @@ func assertInt64Attribute(t *testing.T, s rschema.Schema, name string, check fun
 	t.Helper()
 
 	attr := int64Attribute(t, s, name)
+	if !check(attr) {
+		t.Fatalf("attribute %q has unexpected required/optional/computed flags: %#v", name, attr)
+	}
+}
+
+func assertBoolAttribute(t *testing.T, s rschema.Schema, name string, check func(rschema.BoolAttribute) bool) {
+	t.Helper()
+
+	attr := boolAttribute(t, s, name)
 	if !check(attr) {
 		t.Fatalf("attribute %q has unexpected required/optional/computed flags: %#v", name, attr)
 	}
@@ -255,12 +288,22 @@ func int64Attribute(t *testing.T, s rschema.Schema, name string) rschema.Int64At
 	return attr
 }
 
-func setAttribute(t *testing.T, s rschema.Schema, name string) rschema.SetAttribute {
+func boolAttribute(t *testing.T, s rschema.Schema, name string) rschema.BoolAttribute {
 	t.Helper()
 
-	attr, ok := s.Attributes[name].(rschema.SetAttribute)
+	attr, ok := s.Attributes[name].(rschema.BoolAttribute)
 	if !ok {
-		t.Fatalf("attribute %q has type %T, want SetAttribute", name, s.Attributes[name])
+		t.Fatalf("attribute %q has type %T, want BoolAttribute", name, s.Attributes[name])
+	}
+	return attr
+}
+
+func listAttribute(t *testing.T, s rschema.Schema, name string) rschema.ListAttribute {
+	t.Helper()
+
+	attr, ok := s.Attributes[name].(rschema.ListAttribute)
+	if !ok {
+		t.Fatalf("attribute %q has type %T, want ListAttribute", name, s.Attributes[name])
 	}
 	return attr
 }
@@ -341,42 +384,42 @@ func validateString(validators []validator.String, name string, value string) di
 	return resp.Diagnostics
 }
 
-func assertSetRejects(t *testing.T, attr rschema.SetAttribute, name string, value types.Set) {
+func assertListRejects(t *testing.T, attr rschema.ListAttribute, name string, value types.List) {
 	t.Helper()
 
-	if !validateSet(attr.SetValidators(), name, value).HasError() {
+	if !validateList(attr.ListValidators(), name, value).HasError() {
 		t.Fatalf("%s accepted %#v, want validation error", name, value)
 	}
 }
 
-func assertSetAccepts(t *testing.T, attr rschema.SetAttribute, name string, value types.Set) {
+func assertListAccepts(t *testing.T, attr rschema.ListAttribute, name string, value types.List) {
 	t.Helper()
 
-	if diags := validateSet(attr.SetValidators(), name, value); diags.HasError() {
+	if diags := validateList(attr.ListValidators(), name, value); diags.HasError() {
 		t.Fatalf("%s rejected %#v: %v", name, value, diags)
 	}
 }
 
-func validateSet(validators []validator.Set, name string, value types.Set) diag.Diagnostics {
-	req := validator.SetRequest{
+func validateList(validators []validator.List, name string, value types.List) diag.Diagnostics {
+	req := validator.ListRequest{
 		Path:        path.Root(name),
 		ConfigValue: value,
 	}
-	var resp validator.SetResponse
+	var resp validator.ListResponse
 	for _, v := range validators {
-		v.ValidateSet(context.Background(), req, &resp)
+		v.ValidateList(context.Background(), req, &resp)
 	}
 	return resp.Diagnostics
 }
 
-func stringSet(values ...tfattr.Value) types.Set {
-	return types.SetValueMust(types.StringType, values)
+func stringList(values ...tfattr.Value) types.List {
+	return types.ListValueMust(types.StringType, values)
 }
 
-func extensionIDSet(count int) types.Set {
+func extensionIDList(count int) types.List {
 	values := make([]tfattr.Value, 0, count)
 	for i := 0; i < count; i++ {
 		values = append(values, types.StringValue("ext-"+strconv.Itoa(i)))
 	}
-	return stringSet(values...)
+	return stringList(values...)
 }
