@@ -192,6 +192,51 @@ func TestListProfilePageReadsItemsAndNextOffset(t *testing.T) {
 	}
 }
 
+func TestListProxyPageReadsItemsAndNextOffset(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(pagedListHTTPClient(t, &requests, "/proxies", "project_123", "", []lookupPage{
+		{body: proxyListPage(proxyJSON("proxy-other", "Other")), next: "100"},
+		{offset: "100", body: proxyListPage(proxyJSON("proxy-target", "Target"))},
+	})))
+
+	page, err := clients.ListProxyPage(context.Background(), "project_123", 0)
+	if err != nil {
+		t.Fatalf("ListProxyPage returned error: %v", err)
+	}
+	if got, want := len(page.Items), 1; got != want {
+		t.Fatalf("items length = %d, want %d", got, want)
+	}
+	if page.Items[0].ID != "proxy-other" {
+		t.Fatalf("proxy id = %q, want proxy-other", page.Items[0].ID)
+	}
+	if !page.HasNextPage {
+		t.Fatal("HasNextPage = false, want true")
+	}
+	if page.NextOffset != 100 {
+		t.Fatalf("NextOffset = %d, want 100", page.NextOffset)
+	}
+
+	page, err = clients.ListProxyPage(context.Background(), "project_123", 100)
+	if err != nil {
+		t.Fatalf("ListProxyPage returned error: %v", err)
+	}
+	if page.HasNextPage {
+		t.Fatal("HasNextPage = true, want false")
+	}
+	if page.Items[0].ID != "proxy-target" {
+		t.Fatalf("proxy id = %q, want proxy-target", page.Items[0].ID)
+	}
+	if got, want := len(requests), 2; got != want {
+		t.Fatalf("request count = %d, want %d", got, want)
+	}
+}
+
 func TestClientsDoNotReadSDKEnvironmentDefaults(t *testing.T) {
 	t.Setenv("KERNEL_BASE_URL", "https://env.example")
 	t.Setenv("KERNEL_API_KEY", "env-api-key")
@@ -459,4 +504,12 @@ func profileListPage(profiles ...string) string {
 
 func profileJSON(id, name string) string {
 	return `{"id":"` + id + `","name":"` + name + `","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
+}
+
+func proxyListPage(proxies ...string) string {
+	return "[" + strings.Join(proxies, ",") + "]"
+}
+
+func proxyJSON(id, name string) string {
+	return `{"id":"` + id + `","name":"` + name + `","type":"custom","protocol":"https","status":"available","last_checked":"2026-01-01T00:00:00Z"}`
 }
