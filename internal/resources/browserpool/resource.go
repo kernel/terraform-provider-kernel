@@ -19,6 +19,7 @@ type browserPoolClient interface {
 	DefaultProjectID() string
 	CreateBrowserPool(context.Context, string, kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error)
 	GetBrowserPool(context.Context, string, string) (*kernel.BrowserPool, error)
+	UpdateBrowserPool(context.Context, string, string, kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error)
 }
 
 type browserPoolResource struct {
@@ -91,10 +92,25 @@ func (r *browserPoolResource) Read(ctx context.Context, req resource.ReadRequest
 }
 
 func (r *browserPoolResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.AddError(
-		"Kernel Browser Pool Update Not Implemented",
-		"Update support is intentionally left for the browser pool update/delete slice.",
-	)
+	var plan browserPoolModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var state browserPoolModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	nextState, diags := r.update(ctx, plan, state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, nextState)...)
 }
 
 func (r *browserPoolResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -139,23 +155,63 @@ func (r *browserPoolResource) create(ctx context.Context, plan browserPoolModel)
 	return state, diags
 }
 
+func (r *browserPoolResource) update(ctx context.Context, plan, state browserPoolModel) (browserPoolModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if r.client == nil {
+		addMissingClientDiagnostic(&diags)
+		return browserPoolModel{}, diags
+	}
+
+	id, ok := stateBrowserPoolID(state, "update", &diags)
+	if !ok {
+		return browserPoolModel{}, diags
+	}
+
+	params, expandDiags := expandUpdateParams(ctx, plan, state)
+	diags.Append(expandDiags...)
+	if diags.HasError() {
+		return browserPoolModel{}, diags
+	}
+
+	// Project changes replace the pool, so plan and state agree on the project here.
+	projectID := state.ProjectID.ValueString()
+	if _, err := r.client.UpdateBrowserPool(ctx, projectID, id, params); err != nil {
+		projectscope.AddError(&diags, "Update Kernel Browser Pool", projectID, err)
+		return browserPoolModel{}, diags
+	}
+
+	readBase := plan
+	readBase.ID = state.ID
+	readBase.ProjectID = state.ProjectID
+	nextState, removed, readDiags := r.read(ctx, readBase)
+	diags.Append(readDiags...)
+	if diags.HasError() {
+		return browserPoolModel{}, diags
+	}
+	if removed {
+		diags.AddError(
+			"Read Kernel Browser Pool After Update",
+			"Kernel browser pool "+id+" was not found after update.",
+		)
+		return browserPoolModel{}, diags
+	}
+
+	return nextState, diags
+}
+
 func (r *browserPoolResource) read(ctx context.Context, state browserPoolModel) (browserPoolModel, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
 		addMissingClientDiagnostic(&diags)
 		return browserPoolModel{}, false, diags
 	}
-	if state.ID.IsNull() || state.ID.IsUnknown() || state.ID.ValueString() == "" {
-		diags.AddAttributeError(
-			path.Root("id"),
-			"Missing Kernel Browser Pool ID",
-			"Cannot read a Kernel browser pool without a known id in Terraform state.",
-		)
+	id, ok := stateBrowserPoolID(state, "read", &diags)
+	if !ok {
 		return browserPoolModel{}, false, diags
 	}
 
 	projectID := state.ProjectID.ValueString()
-	pool, err := r.client.GetBrowserPool(ctx, projectID, state.ID.ValueString())
+	pool, err := r.client.GetBrowserPool(ctx, projectID, id)
 	if err != nil {
 		if projectscope.IsNotFound(err) {
 			return browserPoolModel{}, true, diags
@@ -172,6 +228,19 @@ func (r *browserPoolResource) read(ctx context.Context, state browserPoolModel) 
 	diags.Append(flattenDiags...)
 	nextState.ProjectID = state.ProjectID
 	return nextState, false, diags
+}
+
+func stateBrowserPoolID(state browserPoolModel, operation string, diags *diag.Diagnostics) (string, bool) {
+	if state.ID.IsNull() || state.ID.IsUnknown() || state.ID.ValueString() == "" {
+		diags.AddAttributeError(
+			path.Root("id"),
+			"Missing Kernel Browser Pool ID",
+			"Cannot "+operation+" a Kernel browser pool without a known id in Terraform state.",
+		)
+		return "", false
+	}
+
+	return state.ID.ValueString(), true
 }
 
 func addMissingClientDiagnostic(diags *diag.Diagnostics) {

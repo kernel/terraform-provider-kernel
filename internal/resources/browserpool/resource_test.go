@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -39,6 +40,7 @@ type fakeBrowserPoolClient struct {
 	defaultProjectID string
 	create           func(context.Context, string, kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error)
 	get              func(context.Context, string, string) (*kernel.BrowserPool, error)
+	update           func(context.Context, string, string, kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error)
 }
 
 func (f fakeBrowserPoolClient) DefaultProjectID() string {
@@ -57,6 +59,13 @@ func (f fakeBrowserPoolClient) GetBrowserPool(ctx context.Context, projectID, id
 		return nil, errors.New("unexpected get")
 	}
 	return f.get(ctx, projectID, id)
+}
+
+func (f fakeBrowserPoolClient) UpdateBrowserPool(ctx context.Context, projectID, id string, params kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error) {
+	if f.update == nil {
+		return nil, errors.New("unexpected update")
+	}
+	return f.update(ctx, projectID, id, params)
 }
 
 func TestResourceMetadataAndSchema(t *testing.T) {
@@ -400,5 +409,231 @@ func TestReadBrowserPoolRejectsEmptyStateID(t *testing.T) {
 	}
 	if called {
 		t.Fatal("GetBrowserPool was called for empty id")
+	}
+}
+
+func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
+	t.Parallel()
+
+	plan := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(2),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		StartURL:          types.StringValue("https://new.example"),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+	state := browserPoolModel{
+		ID:                types.StringValue("pool-1"),
+		Name:              types.StringValue("pool-a"),
+		ProjectID:         types.StringValue("proj_a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		StartURL:          types.StringValue("https://old.example"),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	var calls []string
+	var gotID string
+	var gotProjectID string
+	var gotParams kernel.BrowserPoolUpdateParams
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		update: func(ctx context.Context, projectID, id string, params kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error) {
+			calls = append(calls, "update")
+			gotID = id
+			gotProjectID = projectID
+			gotParams = params
+			pool := unmarshalBrowserPool(t, `{
+				"id": "pool-1",
+				"browser_pool_config": {
+					"size": 2,
+					"name": "ignored-update-response"
+				}
+			}`)
+			return &pool, nil
+		},
+		get: func(ctx context.Context, projectID, id string) (*kernel.BrowserPool, error) {
+			calls = append(calls, "get")
+			if id != "pool-1" {
+				t.Fatalf("GetBrowserPool id = %q, want pool-1", id)
+			}
+			pool := unmarshalBrowserPool(t, `{
+				"id": "pool-1",
+				"browser_pool_config": {
+					"size": 2,
+					"name": "pool-a",
+					"start_url": "https://new.example",
+					"headless": true,
+					"kiosk_mode": false,
+					"stealth": false,
+					"timeout_seconds": 90,
+					"fill_rate_per_minute": 10
+				}
+			}`)
+			return &pool, nil
+		},
+	})
+
+	nextState, diags := r.update(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	if gotID != "pool-1" {
+		t.Fatalf("UpdateBrowserPool id = %q, want pool-1", gotID)
+	}
+	if gotProjectID != "proj_a" {
+		t.Fatalf("UpdateBrowserPool project = %q, want proj_a from state", gotProjectID)
+	}
+	body := marshalSDKParams(t, gotParams)
+	want := map[string]any{
+		"size":      float64(2),
+		"start_url": "https://new.example",
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+	if !reflect.DeepEqual(calls, []string{"update", "get"}) {
+		t.Fatalf("calls = %#v, want update then get", calls)
+	}
+	if nextState.Size.ValueInt64() != 2 {
+		t.Fatalf("size = %d, want 2", nextState.Size.ValueInt64())
+	}
+	if nextState.StartURL.ValueString() != "https://new.example" {
+		t.Fatalf("start_url = %q, want https://new.example", nextState.StartURL.ValueString())
+	}
+}
+
+func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T) {
+	t.Parallel()
+
+	plan := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ExtensionIDs:      stringListForTest(),
+		ChromePolicy:      chromePolicyValueForTest(`{}`),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+	state := browserPoolModel{
+		ID:                types.StringValue("pool-1"),
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ExtensionIDs:      stringListForTest("ext-a"),
+		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	var gotParams kernel.BrowserPoolUpdateParams
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		update: func(ctx context.Context, projectID, id string, params kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error) {
+			gotParams = params
+			pool := unmarshalBrowserPool(t, `{
+				"id": "pool-1",
+				"browser_pool_config": {
+					"size": 1,
+					"name": "pool-a"
+				}
+			}`)
+			return &pool, nil
+		},
+		get: func(ctx context.Context, projectID, id string) (*kernel.BrowserPool, error) {
+			pool := unmarshalBrowserPool(t, `{
+				"id": "pool-1",
+				"browser_pool_config": {
+					"size": 1,
+					"name": "pool-a",
+					"headless": true,
+					"kiosk_mode": false,
+					"stealth": false,
+					"timeout_seconds": 90,
+					"fill_rate_per_minute": 10
+				}
+			}`)
+			return &pool, nil
+		},
+	})
+
+	nextState, diags := r.update(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, gotParams)
+	want := map[string]any{
+		"extensions":    []any{},
+		"chrome_policy": map[string]any{},
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+	assertStringList(t, nextState.ExtensionIDs, []string{})
+	if nextState.ChromePolicy.ValueString() != `{}` {
+		t.Fatalf("chrome_policy = %q, want explicit empty object preserved", nextState.ChromePolicy.ValueString())
+	}
+}
+
+func TestUpdateBrowserPoolReturnsAPIDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		update: func(ctx context.Context, projectID, id string, params kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error) {
+			return nil, errors.New("api failed")
+		},
+	})
+
+	_, diags := r.update(
+		context.Background(),
+		browserPoolModel{Size: types.Int64Value(2)},
+		browserPoolModel{ID: types.StringValue("pool-1"), Size: types.Int64Value(1)},
+	)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for update error")
+	}
+}
+
+func TestUpdateBrowserPoolRejectsMissingStateID(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	r := newResourceWithClient(fakeBrowserPoolClient{
+		update: func(ctx context.Context, projectID, id string, params kernel.BrowserPoolUpdateParams) (*kernel.BrowserPool, error) {
+			called = true
+			return nil, errors.New("should not call update")
+		},
+	})
+
+	_, diags := r.update(
+		context.Background(),
+		browserPoolModel{Size: types.Int64Value(2)},
+		browserPoolModel{ID: types.StringNull(), Size: types.Int64Value(1)},
+	)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for missing id")
+	}
+	if called {
+		t.Fatal("UpdateBrowserPool was called for missing id")
 	}
 }
