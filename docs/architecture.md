@@ -181,14 +181,20 @@ Updated PR4 split:
 
 Then continue:
 
-4. Browser pool create/read.
-5. Browser pool update/delete.
-6. Browser pool import.
-7. Data sources.
-8. Extra unit coverage and cleanup.
-9. Acceptance test harness.
-10. Examples/docs.
-11. CI/release/security checklist.
+1. PR5: browser pool create/read.
+2. PR6a: browser pool update patch builder.
+3. PR6b: browser pool update wiring.
+4. PR6c: browser pool delete.
+5. PR7: browser pool import.
+6. PR8a: project/profile data sources.
+7. PR8b: proxy/extension data sources.
+8. PR9: named extra coverage or cleanup only when a concrete gap is known.
+9. PR10a: acceptance test harness.
+10. PR10b: browser pool acceptance tests.
+11. PR11a: README and examples.
+12. PR11b: generated Terraform docs.
+13. PR12a: CI.
+14. PR12b: release and security checklist.
 
 ## Review Gates
 

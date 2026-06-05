@@ -188,6 +188,215 @@ func TestExpandCreateParamsReturnsEmptyParamsOnViewportError(t *testing.T) {
 	assertEmptySDKParams(t, params)
 }
 
+func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
+	plan := browserPoolModel{
+		Name:              types.StringValue("pool-b"),
+		Size:              types.Int64Value(3),
+		ProfileID:         types.StringValue("profile-2"),
+		ProxyID:           types.StringValue("proxy-2"),
+		ExtensionIDs:      stringListForTest("ext-b", "ext-a"),
+		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://new.example"}`),
+		Viewport:          viewportObjectForTest(types.Int64Value(1440), types.Int64Value(900), types.Int64Value(30)),
+		Headless:          types.BoolValue(false),
+		KioskMode:         types.BoolValue(true),
+		Stealth:           types.BoolValue(true),
+		StartURL:          types.StringValue("https://new.example"),
+		TimeoutSeconds:    types.Int64Value(120),
+		FillRatePerMinute: types.Int64Value(0),
+	}
+	state := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringValue("profile-1"),
+		ProxyID:           types.StringValue("proxy-1"),
+		ExtensionIDs:      stringListForTest("ext-a"),
+		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://old.example"}`),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringValue("https://old.example"),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"name":                 "pool-b",
+		"size":                 float64(3),
+		"profile":              map[string]any{"id": "profile-2"},
+		"proxy_id":             "proxy-2",
+		"extensions":           []any{map[string]any{"id": "ext-b"}, map[string]any{"id": "ext-a"}},
+		"chrome_policy":        map[string]any{"HomepageLocation": "https://new.example"},
+		"viewport":             map[string]any{"width": float64(1440), "height": float64(900), "refresh_rate": float64(30)},
+		"headless":             false,
+		"kiosk_mode":           true,
+		"stealth":              true,
+		"start_url":            "https://new.example",
+		"timeout_seconds":      float64(120),
+		"fill_rate_per_minute": float64(0),
+	}
+	if !jsonEqual(body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsOmitsUnchangedDurableConfig(t *testing.T) {
+	model := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringValue("profile-1"),
+		ProxyID:           types.StringValue("proxy-1"),
+		ExtensionIDs:      stringListForTest("ext-a"),
+		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringValue("https://example.com"),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	params, diags := expandUpdateParams(context.Background(), model, model)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	if len(body) != 0 {
+		t.Fatalf("update params = %#v, want empty patch for unchanged config", body)
+	}
+}
+
+func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
+	plan := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringValue("profile-1"),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+	state := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringValue("profile-1"),
+		ProxyID:           types.StringValue("proxy-1"),
+		ExtensionIDs:      stringListForTest("ext-a"),
+		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:          plan.Viewport,
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringValue("https://example.com"),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"proxy_id":      "",
+		"extensions":    []any{},
+		"chrome_policy": map[string]any{},
+		"start_url":     "",
+	}
+	if !jsonEqual(body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
+	plan := browserPoolModel{
+		Name:              types.StringNull(),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+	state := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringValue("profile-1"),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for unsupported clear operations")
+	}
+	for _, want := range []path.Path{path.Root("name"), path.Root("profile_id"), path.Root("viewport")} {
+		if !hasDiagnosticPath(diags, want) {
+			t.Fatalf("expected diagnostic at %s, got %v", want.String(), diags)
+		}
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
+func TestExpandUpdateParamsRejectsInvalidChromePolicy(t *testing.T) {
+	plan := browserPoolModel{
+		Size:              types.Int64Value(1),
+		ChromePolicy:      chromePolicyValueForTest(`[]`),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+	state := browserPoolModel{
+		Size:              types.Int64Value(1),
+		ChromePolicy:      chromePolicyNull(),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+	}
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics for invalid chrome_policy")
+	}
+	if !hasDiagnosticPath(diags, path.Root("chrome_policy")) {
+		t.Fatalf("expected diagnostic at chrome_policy, got %v", diags)
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
 func chromePolicyValueForTest(value string) chromePolicyValue {
 	return chromePolicyValue{StringValue: basetypes.NewStringValue(value)}
 }
@@ -235,7 +444,7 @@ func viewportObjectForTest(width, height, refreshRate types.Int64) types.Object 
 	)
 }
 
-func marshalSDKParams(t *testing.T, params kernel.BrowserPoolNewParams) map[string]any {
+func marshalSDKParams(t *testing.T, params any) map[string]any {
 	t.Helper()
 
 	data, err := json.Marshal(params)
@@ -260,6 +469,14 @@ func assertEmptySDKParams(t *testing.T, params kernel.BrowserPoolNewParams) {
 	t.Helper()
 
 	if !reflect.DeepEqual(params, kernel.BrowserPoolNewParams{}) {
+		t.Fatalf("params = %#v, want zero SDK params on diagnostics", params)
+	}
+}
+
+func assertEmptyUpdateSDKParams(t *testing.T, params kernel.BrowserPoolUpdateParams) {
+	t.Helper()
+
+	if !reflect.DeepEqual(params, kernel.BrowserPoolUpdateParams{}) {
 		t.Fatalf("params = %#v, want zero SDK params on diagnostics", params)
 	}
 }

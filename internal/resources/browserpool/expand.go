@@ -89,17 +89,157 @@ func expandCreateParams(ctx context.Context, model browserPoolModel) (kernel.Bro
 	return params, diags
 }
 
-func validateCreateKnownValues(diags *diag.Diagnostics, model browserPoolModel) {
-	requireKnownOptional(diags, path.Root("name"), model.Name)
-	requireKnownOptional(diags, path.Root("profile_id"), model.ProfileID)
-	requireKnownOptional(diags, path.Root("proxy_id"), model.ProxyID)
-	requireKnownOptional(diags, path.Root("chrome_policy"), model.ChromePolicy)
-	requireKnownOptional(diags, path.Root("extension_ids"), model.ExtensionIDs)
-	requireKnownOptional(diags, path.Root("viewport"), model.Viewport)
-	requireKnownOptional(diags, path.Root("start_url"), model.StartURL)
+func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kernel.BrowserPoolUpdateParams, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if plan.Size.IsNull() || plan.Size.IsUnknown() {
+		diags.AddAttributeError(
+			path.Root("size"),
+			"Missing Browser Pool Size",
+			"size must be known before updating a Kernel browser pool.",
+		)
+		return kernel.BrowserPoolUpdateParams{}, diags
+	}
+
+	validateUpdateKnownValues(&diags, plan)
+	validateSupportedUpdateClears(&diags, plan, state)
+	if diags.HasError() {
+		return kernel.BrowserPoolUpdateParams{}, diags
+	}
+
+	var params kernel.BrowserPoolUpdateParams
+
+	if !plan.Name.Equal(state.Name) && isKnownString(plan.Name) {
+		params.Name = kernel.String(plan.Name.ValueString())
+	}
+	if !plan.Size.Equal(state.Size) {
+		params.Size = kernel.Int(plan.Size.ValueInt64())
+	}
+	if !plan.ProfileID.Equal(state.ProfileID) && isKnownString(plan.ProfileID) {
+		params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
+	}
+	if !plan.ProxyID.Equal(state.ProxyID) {
+		if plan.ProxyID.IsNull() {
+			params.ProxyID = kernel.String("")
+		} else if isKnownString(plan.ProxyID) {
+			params.ProxyID = kernel.String(plan.ProxyID.ValueString())
+		}
+	}
+	if !plan.ExtensionIDs.Equal(state.ExtensionIDs) {
+		if plan.ExtensionIDs.IsNull() {
+			params.Extensions = []shared.BrowserExtensionParam{}
+		} else {
+			ids, extensionDiags := extensionIDs(ctx, plan.ExtensionIDs)
+			diags.Append(extensionDiags...)
+			if diags.HasError() {
+				return kernel.BrowserPoolUpdateParams{}, diags
+			}
+			params.Extensions = extensionParams(ids)
+		}
+	}
+	if !plan.ChromePolicy.Equal(state.ChromePolicy) {
+		if plan.ChromePolicy.IsNull() {
+			params.ChromePolicy = map[string]any{}
+		} else if isKnownString(plan.ChromePolicy.StringValue) {
+			policy, policyDiags := decodeChromePolicyJSON(plan.ChromePolicy.ValueString())
+			diags.Append(policyDiags...)
+			if diags.HasError() {
+				return kernel.BrowserPoolUpdateParams{}, diags
+			}
+			params.ChromePolicy = policy
+		}
+	}
+	if !plan.Viewport.Equal(state.Viewport) && !plan.Viewport.IsNull() {
+		viewport, viewportDiags := expandViewport(ctx, plan.Viewport)
+		diags.Append(viewportDiags...)
+		if diags.HasError() {
+			return kernel.BrowserPoolUpdateParams{}, diags
+		}
+		params.Viewport = viewport
+	}
+	if !plan.Headless.Equal(state.Headless) && isKnownBool(plan.Headless) {
+		params.Headless = kernel.Bool(plan.Headless.ValueBool())
+	}
+	if !plan.KioskMode.Equal(state.KioskMode) && isKnownBool(plan.KioskMode) {
+		params.KioskMode = kernel.Bool(plan.KioskMode.ValueBool())
+	}
+	if !plan.Stealth.Equal(state.Stealth) && isKnownBool(plan.Stealth) {
+		params.Stealth = kernel.Bool(plan.Stealth.ValueBool())
+	}
+	if !plan.StartURL.Equal(state.StartURL) {
+		if plan.StartURL.IsNull() {
+			params.StartURL = kernel.String("")
+		} else if isKnownString(plan.StartURL) {
+			params.StartURL = kernel.String(plan.StartURL.ValueString())
+		}
+	}
+	if !plan.TimeoutSeconds.Equal(state.TimeoutSeconds) && isKnownInt64(plan.TimeoutSeconds) {
+		params.TimeoutSeconds = kernel.Int(plan.TimeoutSeconds.ValueInt64())
+	}
+	if !plan.FillRatePerMinute.Equal(state.FillRatePerMinute) && isKnownInt64(plan.FillRatePerMinute) {
+		params.FillRatePerMinute = kernel.Int(plan.FillRatePerMinute.ValueInt64())
+	}
+
+	return params, diags
 }
 
-func requireKnownOptional(diags *diag.Diagnostics, attrPath path.Path, value attr.Value) {
+func validateCreateKnownValues(diags *diag.Diagnostics, model browserPoolModel) {
+	requireKnownOptional(diags, path.Root("name"), model.Name, "creating")
+	requireKnownOptional(diags, path.Root("profile_id"), model.ProfileID, "creating")
+	requireKnownOptional(diags, path.Root("proxy_id"), model.ProxyID, "creating")
+	requireKnownOptional(diags, path.Root("chrome_policy"), model.ChromePolicy, "creating")
+	requireKnownOptional(diags, path.Root("extension_ids"), model.ExtensionIDs, "creating")
+	requireKnownOptional(diags, path.Root("viewport"), model.Viewport, "creating")
+	requireKnownOptional(diags, path.Root("start_url"), model.StartURL, "creating")
+}
+
+func validateUpdateKnownValues(diags *diag.Diagnostics, model browserPoolModel) {
+	requireKnownOptional(diags, path.Root("name"), model.Name, "updating")
+	requireKnownOptional(diags, path.Root("profile_id"), model.ProfileID, "updating")
+	requireKnownOptional(diags, path.Root("proxy_id"), model.ProxyID, "updating")
+	requireKnownOptional(diags, path.Root("chrome_policy"), model.ChromePolicy, "updating")
+	requireKnownOptional(diags, path.Root("extension_ids"), model.ExtensionIDs, "updating")
+	requireKnownOptional(diags, path.Root("viewport"), model.Viewport, "updating")
+	requireKnownOptional(diags, path.Root("start_url"), model.StartURL, "updating")
+}
+
+func validateSupportedUpdateClears(diags *diag.Diagnostics, plan, state browserPoolModel) {
+	if clearsString(plan.Name, state.Name) {
+		addUnsupportedClearDiagnostic(
+			diags,
+			path.Root("name"),
+			"The Kernel browser pool API does not currently support clearing a browser pool name. Set a new name or keep the existing name.",
+		)
+	}
+	if clearsString(plan.ProfileID, state.ProfileID) {
+		addUnsupportedClearDiagnostic(
+			diags,
+			path.Root("profile_id"),
+			"The Kernel browser pool API does not currently expose a safe profile clear payload. Set a new profile_id or keep the existing profile_id.",
+		)
+	}
+	if plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown() {
+		addUnsupportedClearDiagnostic(
+			diags,
+			path.Root("viewport"),
+			"The Kernel browser pool API does not currently expose a safe viewport clear payload. Set a new viewport or keep the existing viewport.",
+		)
+	}
+}
+
+func clearsString(plan, state types.String) bool {
+	return plan.IsNull() && isKnownString(state)
+}
+
+func addUnsupportedClearDiagnostic(diags *diag.Diagnostics, attrPath path.Path, detail string) {
+	diags.AddAttributeError(
+		attrPath,
+		"Unsupported Browser Pool Clear",
+		detail,
+	)
+}
+
+func requireKnownOptional(diags *diag.Diagnostics, attrPath path.Path, value attr.Value, operation string) {
 	if value.IsNull() || !value.IsUnknown() {
 		return
 	}
@@ -107,7 +247,7 @@ func requireKnownOptional(diags *diag.Diagnostics, attrPath path.Path, value att
 	diags.AddAttributeError(
 		attrPath,
 		"Unknown Browser Pool Value",
-		fmt.Sprintf("%s must be known before creating a Kernel browser pool.", attrPath.String()),
+		fmt.Sprintf("%s must be known before %s a Kernel browser pool.", attrPath.String(), operation),
 	)
 }
 
@@ -159,14 +299,14 @@ func expandViewport(ctx context.Context, value types.Object) (shared.BrowserView
 		diags.AddAttributeError(
 			path.Root("viewport").AtName("width"),
 			"Missing Browser Pool Viewport Width",
-			"viewport.width must be known before creating a Kernel browser pool.",
+			"viewport.width must be known before configuring a Kernel browser pool.",
 		)
 	}
 	if model.Height.IsNull() || model.Height.IsUnknown() {
 		diags.AddAttributeError(
 			path.Root("viewport").AtName("height"),
 			"Missing Browser Pool Viewport Height",
-			"viewport.height must be known before creating a Kernel browser pool.",
+			"viewport.height must be known before configuring a Kernel browser pool.",
 		)
 	}
 	if diags.HasError() {
