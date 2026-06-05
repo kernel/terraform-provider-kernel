@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/kernel/terraform-provider-kernel/internal/datasources/extension"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/profile"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/project"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/proxy"
@@ -88,5 +89,6 @@ func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.Da
 		project.NewDataSource,
 		profile.NewDataSource,
 		proxy.NewDataSource,
+		extension.NewDataSource,
 	}
 }
