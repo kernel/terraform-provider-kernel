@@ -2,8 +2,6 @@ package project
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -11,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
-	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
+	"github.com/kernel/terraform-provider-kernel/internal/datasources"
 )
 
 var (
@@ -22,7 +20,6 @@ var (
 type projectClient interface {
 	DefaultProjectID() string
 	GetProject(context.Context, string) (*kernel.Project, error)
-	ListProjectPage(context.Context, string, int64) (kernelclient.ProjectPage, error)
 }
 
 type projectDataSource struct {
@@ -36,14 +33,6 @@ type projectModel struct {
 	CreatedAt types.String `tfsdk:"created_at"`
 	UpdatedAt types.String `tfsdk:"updated_at"`
 }
-
-type projectSelector int
-
-const (
-	projectSelectorProvider projectSelector = iota
-	projectSelectorID
-	projectSelectorName
-)
 
 func NewDataSource() datasource.DataSource {
 	return &projectDataSource{}
@@ -130,17 +119,35 @@ func (d *projectDataSource) read(ctx context.Context, config projectModel) (proj
 		return projectModel{}, diags
 	}
 
-	selector, selectorDiags := resolveProjectSelector(config.ID, config.Name)
+	selector, selectorDiags := datasources.ResolveIDNameSelector("Project", "kernel_project", config.ID, config.Name)
 	diags.Append(selectorDiags...)
 	if diags.HasError() {
 		return projectModel{}, diags
 	}
 
-	if selector == projectSelectorID {
+	if selector.HasID {
 		return d.get(ctx, config.ID.ValueString())
 	}
-	if selector == projectSelectorName {
-		return d.lookupName(ctx, config.Name.ValueString())
+	if selector.HasName {
+		// The API resolves the GET path parameter by id or name (names are
+		// unique within an organization), so a single Get covers name lookups.
+		name := config.Name.ValueString()
+		state, getDiags := d.get(ctx, name)
+		diags.Append(getDiags...)
+		if diags.HasError() {
+			return projectModel{}, diags
+		}
+		// The API tries id resolution first, so a name that collides with
+		// another project's id silently returns that project. Enforce the
+		// exact-name contract the selector promises.
+		if state.Name.ValueString() != name {
+			diags.AddError(
+				"Lookup Kernel Project",
+				"Kernel resolved "+name+" to a project whose name does not match; the value likely collides with a project id. Configure id instead.",
+			)
+			return projectModel{}, diags
+		}
+		return state, diags
 	}
 
 	id := d.client.DefaultProjectID()
@@ -168,126 +175,23 @@ func (d *projectDataSource) get(ctx context.Context, id string) (projectModel, d
 	return flattenProject(*project)
 }
 
-func (d *projectDataSource) lookupName(ctx context.Context, name string) (projectModel, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	project, count := d.findProjectsByName(ctx, name, &diags)
-	if diags.HasError() {
-		return projectModel{}, diags
-	}
-
-	switch count {
-	case 0:
-		diags.AddError(
-			"Lookup Kernel Project",
-			"No Kernel project found with exact name "+name+".",
-		)
-		return projectModel{}, diags
-	case 1:
-		return flattenProject(*project)
-	default:
-		diags.AddError(
-			"Ambiguous Kernel Project Name",
-			"Found multiple Kernel projects with exact name "+name+". Configure id instead.",
-		)
-		return projectModel{}, diags
-	}
-}
-
-func (d *projectDataSource) findProjectsByName(ctx context.Context, name string, diags *diag.Diagnostics) (*kernel.Project, int) {
-	var match *kernel.Project
-	count := 0
-	offset := int64(0)
-
-	for {
-		page, err := d.client.ListProjectPage(ctx, name, offset)
-		if err != nil {
-			diags.AddError("Lookup Kernel Project", err.Error())
-			return nil, 0
-		}
-
-		for _, project := range page.Items {
-			if !validProjectString(project.JSON.Name.Raw(), project.JSON.Name.Valid(), project.Name) {
-				addInvalidProjectField(diags, "name")
-				return nil, 0
-			}
-			if project.Name != name {
-				continue
-			}
-			count++
-			if match == nil {
-				matched := project
-				match = &matched
-			}
-		}
-
-		if !page.HasNextPage {
-			break
-		}
-		offset = page.NextOffset
-	}
-
-	return match, count
-}
-
-func resolveProjectSelector(id, name types.String) (projectSelector, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	if id.IsUnknown() || name.IsUnknown() {
-		diags.AddError(
-			"Unknown Project Selector",
-			"Project id and name must be known before reading the data source.",
-		)
-		return projectSelectorProvider, diags
-	}
-	if !id.IsNull() && id.ValueString() == "" {
-		diags.AddError(
-			"Empty Project ID",
-			"Project id must be omitted or a non-empty string.",
-		)
-	}
-	if !name.IsNull() && name.ValueString() == "" {
-		diags.AddError(
-			"Empty Project Name",
-			"Project name must be omitted or a non-empty string.",
-		)
-	}
-	if diags.HasError() {
-		return projectSelectorProvider, diags
-	}
-	if !id.IsNull() && !name.IsNull() {
-		diags.AddError(
-			"Conflicting Project Selectors",
-			"Configure only one of id or name for kernel_project.",
-		)
-		return projectSelectorProvider, diags
-	}
-	if !id.IsNull() {
-		return projectSelectorID, diags
-	}
-	if !name.IsNull() {
-		return projectSelectorName, diags
-	}
-	return projectSelectorProvider, diags
-}
-
 func flattenProject(project kernel.Project) (projectModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if !validProjectString(project.JSON.ID.Raw(), project.JSON.ID.Valid(), project.ID) {
-		addInvalidProjectField(&diags, "id")
+	if !datasources.ValidResponseString(project.JSON.ID.Raw(), project.JSON.ID.Valid(), project.ID) {
+		datasources.AddInvalidResponseField(&diags, "Project", "id")
 	}
-	if !validProjectString(project.JSON.Name.Raw(), project.JSON.Name.Valid(), project.Name) {
-		addInvalidProjectField(&diags, "name")
+	if !datasources.ValidResponseString(project.JSON.Name.Raw(), project.JSON.Name.Valid(), project.Name) {
+		datasources.AddInvalidResponseField(&diags, "Project", "name")
 	}
-	if !validProjectString(project.JSON.Status.Raw(), project.JSON.Status.Valid(), string(project.Status)) {
-		addInvalidProjectField(&diags, "status")
+	if !datasources.ValidResponseString(project.JSON.Status.Raw(), project.JSON.Status.Valid(), string(project.Status)) {
+		datasources.AddInvalidResponseField(&diags, "Project", "status")
 	}
-	if !validProjectTime(project.JSON.CreatedAt.Raw(), project.JSON.CreatedAt.Valid(), project.CreatedAt) {
-		addInvalidProjectField(&diags, "created_at")
+	if !datasources.ValidResponseTime(project.JSON.CreatedAt.Raw(), project.JSON.CreatedAt.Valid(), project.CreatedAt) {
+		datasources.AddInvalidResponseField(&diags, "Project", "created_at")
 	}
-	if !validProjectTime(project.JSON.UpdatedAt.Raw(), project.JSON.UpdatedAt.Valid(), project.UpdatedAt) {
-		addInvalidProjectField(&diags, "updated_at")
+	if !datasources.ValidResponseTime(project.JSON.UpdatedAt.Raw(), project.JSON.UpdatedAt.Valid(), project.UpdatedAt) {
+		datasources.AddInvalidResponseField(&diags, "Project", "updated_at")
 	}
 	if diags.HasError() {
 		return projectModel{}, diags
@@ -300,39 +204,4 @@ func flattenProject(project kernel.Project) (projectModel, diag.Diagnostics) {
 		CreatedAt: types.StringValue(project.CreatedAt.Format(time.RFC3339Nano)),
 		UpdatedAt: types.StringValue(project.UpdatedAt.Format(time.RFC3339Nano)),
 	}, diags
-}
-
-func validProjectString(raw string, valid bool, value string) bool {
-	if !projectFieldPresent(raw) || !valid || value == "" {
-		return false
-	}
-
-	var decoded string
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return false
-	}
-	return decoded == value
-}
-
-func validProjectTime(raw string, valid bool, value time.Time) bool {
-	if !projectFieldPresent(raw) || !valid || value.IsZero() {
-		return false
-	}
-
-	var decoded time.Time
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return false
-	}
-	return decoded.Equal(value)
-}
-
-func projectFieldPresent(raw string) bool {
-	return raw != "" && strings.TrimSpace(raw) != "null"
-}
-
-func addInvalidProjectField(diags *diag.Diagnostics, field string) {
-	diags.AddError(
-		"Invalid Kernel Project Response",
-		"Kernel returned a project with missing or invalid required field "+field+".",
-	)
 }

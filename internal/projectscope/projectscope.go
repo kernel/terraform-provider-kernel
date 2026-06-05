@@ -31,6 +31,22 @@ func Resolve(attribute types.String, defaultProjectID string) string {
 	return defaultProjectID
 }
 
+// ResolveDataSource resolves the project for a data source read. Terraform
+// normally defers data source reads until the configuration is wholly known,
+// but the framework documents that Config may still carry unknown values; an
+// unknown project must error rather than silently read the provider default.
+func ResolveDataSource(diags *diag.Diagnostics, attribute types.String, defaultProjectID string) string {
+	if attribute.IsUnknown() {
+		diags.AddAttributeError(
+			path.Root("project_id"),
+			"Unknown Kernel Project ID",
+			"project_id is not known during this read. Terraform defers data source reads until the value is known; if this error appears, re-run the operation or report it as a provider bug.",
+		)
+		return ""
+	}
+	return Resolve(attribute, defaultProjectID)
+}
+
 // StateValue converts a resolved project into its state representation:
 // null when unscoped, so reads stay with the API key's binding.
 func StateValue(projectID string) types.String {

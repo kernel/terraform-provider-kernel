@@ -80,27 +80,95 @@ func TestClientsSendProjectHeaderOnlyWhenExplicitlyScoped(t *testing.T) {
 	}
 }
 
-func TestListProjectPageReadsItemsAndNextOffset(t *testing.T) {
+func TestListProfilePageRejectsRepeatedNextOffset(t *testing.T) {
+	t.Parallel()
+
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(pagedListHTTPClient(t, nil, "/profiles", "project_123", "Target", []lookupPage{
+		{offset: "100", body: profileListPage(profileJSON("profile-b", "Other")), next: "100"},
+	})))
+
+	_, err := clients.ListProfilePage(context.Background(), "project_123", "Target", 100)
+	if err == nil {
+		t.Fatal("expected repeated next offset error")
+	}
+	for _, want := range []string{"non-advancing", "current offset 100", "next offset 100"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want %q", err.Error(), want)
+		}
+	}
+}
+
+func TestListProfilePageRejectsHasMoreWithoutNextOffset(t *testing.T) {
+	t.Parallel()
+
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(pagedListHTTPClient(t, nil, "/profiles", "project_123", "Target", []lookupPage{
+		{body: profileListPage(profileJSON("profile-b", "Other")), hasMore: "true"},
+	})))
+
+	_, err := clients.ListProfilePage(context.Background(), "project_123", "Target", 0)
+	if err == nil {
+		t.Fatal("expected has-more without next offset error")
+	}
+	for _, want := range []string{"profile pagination", "more results", "without a next offset"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want %q", err.Error(), want)
+		}
+	}
+}
+
+func TestListProfilePageStopsOnExplicitHasMoreFalse(t *testing.T) {
+	t.Parallel()
+
+	// An explicit X-Has-More: false is the authoritative end-of-results
+	// signal; a stale X-Next-Offset alongside it must not keep the scan
+	// paging past the end the server declared.
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(pagedListHTTPClient(t, nil, "/profiles", "project_123", "Target", []lookupPage{
+		{body: profileListPage(profileJSON("profile-target", "Target")), next: "100", hasMore: "false"},
+	})))
+
+	page, err := clients.ListProfilePage(context.Background(), "project_123", "Target", 0)
+	if err != nil {
+		t.Fatalf("ListProfilePage returned error: %v", err)
+	}
+	if page.HasNextPage {
+		t.Fatal("HasNextPage = true, want false when X-Has-More is explicitly false")
+	}
+}
+
+func TestListProfilePageReadsItemsAndNextOffset(t *testing.T) {
 	t.Parallel()
 
 	var requests []capturedRequest
 	clients := New(Config{
-		APIKey:  "test-api-key",
-		BaseURL: "https://api.example",
-	}, WithHTTPClient(projectLookupHTTPClient(t, &requests, "Target", []lookupPage{
-		{body: projectListPage(projectJSON("project-other", "Other")), next: "100"},
-		{offset: "100", body: projectListPage(projectJSON("project-target", "Target"))},
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "default_project",
+	}, WithHTTPClient(pagedListHTTPClient(t, &requests, "/profiles", "project_123", "Target", []lookupPage{
+		{body: profileListPage(profileJSON("profile-other", "Other")), next: "100"},
+		{offset: "100", body: profileListPage(profileJSON("profile-target", "Target"))},
 	})))
 
-	page, err := clients.ListProjectPage(context.Background(), "Target", 0)
+	page, err := clients.ListProfilePage(context.Background(), "project_123", "Target", 0)
 	if err != nil {
-		t.Fatalf("ListProjectPage returned error: %v", err)
+		t.Fatalf("ListProfilePage returned error: %v", err)
 	}
 	if got, want := len(page.Items), 1; got != want {
 		t.Fatalf("items length = %d, want %d", got, want)
 	}
-	if page.Items[0].ID != "project-other" {
-		t.Fatalf("project id = %q, want project-other", page.Items[0].ID)
+	if page.Items[0].ID != "profile-other" {
+		t.Fatalf("profile id = %q, want profile-other", page.Items[0].ID)
 	}
 	if !page.HasNextPage {
 		t.Fatal("HasNextPage = false, want true")
@@ -109,39 +177,18 @@ func TestListProjectPageReadsItemsAndNextOffset(t *testing.T) {
 		t.Fatalf("NextOffset = %d, want 100", page.NextOffset)
 	}
 
-	page, err = clients.ListProjectPage(context.Background(), "Target", 100)
+	page, err = clients.ListProfilePage(context.Background(), "project_123", "Target", 100)
 	if err != nil {
-		t.Fatalf("ListProjectPage returned error: %v", err)
+		t.Fatalf("ListProfilePage returned error: %v", err)
 	}
 	if page.HasNextPage {
 		t.Fatal("HasNextPage = true, want false")
 	}
-	if page.Items[0].ID != "project-target" {
-		t.Fatalf("project id = %q, want project-target", page.Items[0].ID)
+	if page.Items[0].ID != "profile-target" {
+		t.Fatalf("profile id = %q, want profile-target", page.Items[0].ID)
 	}
 	if got, want := len(requests), 2; got != want {
 		t.Fatalf("request count = %d, want %d", got, want)
-	}
-}
-
-func TestListProjectPageRejectsRepeatedNextOffset(t *testing.T) {
-	t.Parallel()
-
-	clients := New(Config{
-		APIKey:  "test-api-key",
-		BaseURL: "https://api.example",
-	}, WithHTTPClient(projectLookupHTTPClient(t, nil, "Target", []lookupPage{
-		{offset: "100", body: projectListPage(projectJSON("project-b", "Other")), next: "100"},
-	})))
-
-	_, err := clients.ListProjectPage(context.Background(), "Target", 100)
-	if err == nil {
-		t.Fatal("expected repeated next offset error")
-	}
-	for _, want := range []string{"non-advancing", "current offset 100", "next offset 100"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error = %q, want %q", err.Error(), want)
-		}
 	}
 }
 
@@ -300,9 +347,10 @@ type capturedRequest struct {
 }
 
 type lookupPage struct {
-	offset string
-	next   string
-	body   string
+	offset  string
+	next    string
+	hasMore string
+	body    string
 }
 
 func recordingHTTPClient(requests *[]capturedRequest, responseBody func(*http.Request) string) *http.Client {
@@ -362,14 +410,21 @@ func captureRequest(requests *[]capturedRequest, req *http.Request) {
 	})
 }
 
-func nextOffset(offset string) http.Header {
-	if offset == "" {
+func lookupHeaders(page lookupPage) http.Header {
+	if page.next == "" && page.hasMore == "" {
 		return nil
 	}
-	return http.Header{"X-Next-Offset": []string{offset}}
+	header := http.Header{}
+	if page.next != "" {
+		header.Set("X-Next-Offset", page.next)
+	}
+	if page.hasMore != "" {
+		header.Set("X-Has-More", page.hasMore)
+	}
+	return header
 }
 
-func projectLookupHTTPClient(t *testing.T, requests *[]capturedRequest, wantQuery string, pages []lookupPage) *http.Client {
+func pagedListHTTPClient(t *testing.T, requests *[]capturedRequest, path, projectID, wantQuery string, pages []lookupPage) *http.Client {
 	t.Helper()
 
 	byOffset := make(map[string]lookupPage, len(pages))
@@ -378,14 +433,14 @@ func projectLookupHTTPClient(t *testing.T, requests *[]capturedRequest, wantQuer
 	}
 
 	return recordingHTTPClientWithHeaders(requests, func(req *http.Request) (string, http.Header) {
-		if req.URL.Path != "/org/projects" {
-			t.Fatalf("path = %s, want /org/projects", req.URL.Path)
+		if req.URL.Path != path {
+			t.Fatalf("path = %s, want %s", req.URL.Path, path)
 		}
 		if got := req.URL.Query().Get("query"); got != wantQuery {
 			t.Fatalf("query = %q, want %q", got, wantQuery)
 		}
-		if got := req.Header.Get("X-Kernel-Project-Id"); got != "" {
-			t.Fatalf("project header = %q, want empty", got)
+		if got := req.Header.Get("X-Kernel-Project-Id"); got != projectID {
+			t.Fatalf("project header = %q, want %q", got, projectID)
 		}
 
 		offset := req.URL.Query().Get("offset")
@@ -394,14 +449,14 @@ func projectLookupHTTPClient(t *testing.T, requests *[]capturedRequest, wantQuer
 			t.Fatalf("unexpected offset: %q", offset)
 		}
 
-		return page.body, nextOffset(page.next)
+		return page.body, lookupHeaders(page)
 	})
 }
 
-func projectListPage(projects ...string) string {
-	return "[" + strings.Join(projects, ",") + "]"
+func profileListPage(profiles ...string) string {
+	return "[" + strings.Join(profiles, ",") + "]"
 }
 
-func projectJSON(id, name string) string {
-	return `{"id":"` + id + `","name":"` + name + `","status":"active","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
+func profileJSON(id, name string) string {
+	return `{"id":"` + id + `","name":"` + name + `","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
 }
