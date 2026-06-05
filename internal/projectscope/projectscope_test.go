@@ -176,3 +176,23 @@ func TestIsNotFound(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveDataSource(t *testing.T) {
+	t.Parallel()
+
+	var diags diag.Diagnostics
+	if got := ResolveDataSource(&diags, types.StringValue("proj_attr"), "proj_default"); got != "proj_attr" || diags.HasError() {
+		t.Fatalf("explicit attribute: got %q, diags %v", got, diags)
+	}
+	if got := ResolveDataSource(&diags, types.StringNull(), "proj_default"); got != "proj_default" || diags.HasError() {
+		t.Fatalf("null attribute: got %q, diags %v", got, diags)
+	}
+
+	got := ResolveDataSource(&diags, types.StringUnknown(), "proj_default")
+	if got != "" {
+		t.Fatalf("unknown attribute resolved to %q, want empty", got)
+	}
+	if !diags.HasError() {
+		t.Fatal("unknown attribute must error, not fall back to the default")
+	}
+}
