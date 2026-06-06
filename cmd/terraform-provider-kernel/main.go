@@ -1,3 +1,7 @@
+// Regenerate docs/ from the provider schema whenever schema descriptions
+// change: go generate ./...
+//go:generate bash ../../scripts/generate-docs.sh
+
 package main
 
 import (
