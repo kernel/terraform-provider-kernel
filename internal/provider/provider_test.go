@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tfprovider "github.com/hashicorp/terraform-plugin-framework/provider"
+	providerschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/kernel/terraform-provider-kernel/internal/provider"
 )
 
@@ -37,4 +38,48 @@ func TestProviderStartsWithNoResourcesOrDataSources(t *testing.T) {
 	if dataSources := p.DataSources(context.Background()); len(dataSources) != 0 {
 		t.Fatalf("DataSources length = %d, want 0", len(dataSources))
 	}
+}
+
+func TestProviderSchema(t *testing.T) {
+	t.Parallel()
+
+	p := provider.New("test")()
+
+	var resp tfprovider.SchemaResponse
+	p.Schema(context.Background(), tfprovider.SchemaRequest{}, &resp)
+
+	apiKey := assertStringAttribute(t, resp.Schema.Attributes["api_key"])
+	if !apiKey.Optional {
+		t.Fatal("api_key should be optional so KERNEL_API_KEY can supply it")
+	}
+	if !apiKey.Sensitive {
+		t.Fatal("api_key should be sensitive")
+	}
+
+	baseURL := assertStringAttribute(t, resp.Schema.Attributes["base_url"])
+	if !baseURL.Optional {
+		t.Fatal("base_url should be optional")
+	}
+	if baseURL.Sensitive {
+		t.Fatal("base_url should not be sensitive")
+	}
+
+	projectID := assertStringAttribute(t, resp.Schema.Attributes["project_id"])
+	if !projectID.Optional {
+		t.Fatal("project_id should be optional")
+	}
+	if projectID.Sensitive {
+		t.Fatal("project_id should not be sensitive")
+	}
+}
+
+func assertStringAttribute(t *testing.T, attr providerschema.Attribute) providerschema.StringAttribute {
+	t.Helper()
+
+	stringAttr, ok := attr.(providerschema.StringAttribute)
+	if !ok {
+		t.Fatalf("attribute type = %T, want provider/schema.StringAttribute", attr)
+	}
+
+	return stringAttr
 }
