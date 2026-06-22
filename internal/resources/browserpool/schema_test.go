@@ -192,6 +192,7 @@ func TestSchemaValidatesChromePolicyJSON(t *testing.T) {
 
 	assertStringRejects(t, attr, "chrome_policy", `{`)
 	assertStringRejects(t, attr, "chrome_policy", `[]`)
+	assertStringRejects(t, attr, "chrome_policy", `null`)
 	assertStringRejects(t, attr, "chrome_policy", `{"Large":"`+strings.Repeat("a", maxChromePolicyBytes)+`"}`)
 	assertStringAccepts(t, attr, "chrome_policy", `{"HomepageLocation":"https://example.com"}`)
 }

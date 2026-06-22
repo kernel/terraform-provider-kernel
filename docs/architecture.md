@@ -127,7 +127,7 @@ Durable fields with server defaults use Terraform `Optional + Computed` semantic
 
 `profile_save_changes` is intentionally omitted in v0 because the browser pool API currently rejects it for browser pools.
 
-`chrome_policy` stays normalized at the Terraform boundary as a JSON object string with Terraform semantic equality for equivalent JSON objects. It is decoded into the SDK shape only at the final SDK call boundary.
+`chrome_policy` is stored as written at the Terraform boundary (the raw JSON object string); Terraform semantic equality treats key-order- or whitespace-different but equivalent JSON as unchanged, and a malformed value is rejected by the attribute validator rather than during value conversion. It is normalized only for comparison and decoded into the SDK shape only at the final SDK call boundary.
 
 `extension_ids` is modeled as an ordered list because Kernel persists extension `load_order`.
 

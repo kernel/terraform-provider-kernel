@@ -76,7 +76,7 @@ func BrowserPoolSchema() rschema.Schema {
 			"chrome_policy": rschema.StringAttribute{
 				Optional:            true,
 				CustomType:          chromePolicyType{},
-				MarkdownDescription: "Normalized JSON object containing Chrome enterprise policy overrides.",
+				MarkdownDescription: "JSON object of Chrome enterprise policy overrides. Stored as written; key order and whitespace are ignored when detecting changes.",
 				Validators: []validator.String{
 					chromePolicyJSONValidator{},
 				},
