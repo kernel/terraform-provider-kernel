@@ -15,7 +15,11 @@ var (
 
 var (
 	browserPoolNamePattern = regexp.MustCompile(fmt.Sprintf(`^[a-zA-Z0-9._-]{1,%d}$`, maxBrowserPoolNameLength))
-	cuidPattern            = regexp.MustCompile(`^[a-z0-9]{24}$`)
+	// cuids are lowercase base36, exactly 24 chars; pool names that look like a
+	// cuid are rejected so a name can't be confused with a resource ID. The
+	// pattern is intentionally lowercase-only: an uppercase 24-char name is not
+	// a cuid and stays allowed.
+	cuidPattern = regexp.MustCompile(`^[a-z0-9]{24}$`)
 )
 
 type browserPoolNameValidator struct{}
@@ -48,7 +52,7 @@ func (browserPoolNameValidator) ValidateString(_ context.Context, req validator.
 type chromePolicyJSONValidator struct{}
 
 func (chromePolicyJSONValidator) Description(context.Context) string {
-	return fmt.Sprintf("value must be a valid JSON object no larger than %d serialized bytes", maxChromePolicyBytes)
+	return fmt.Sprintf("value must be a valid JSON object no larger than %d bytes", maxChromePolicyBytes)
 }
 
 func (v chromePolicyJSONValidator) MarkdownDescription(ctx context.Context) string {
@@ -60,19 +64,21 @@ func (chromePolicyJSONValidator) ValidateString(_ context.Context, req validator
 		return
 	}
 
-	normalized, diags := normalizeChromePolicyJSON(req.ConfigValue.ValueString())
-	for _, diagnostic := range diags {
-		resp.Diagnostics.AddAttributeError(req.Path, diagnostic.Summary(), diagnostic.Detail())
-	}
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	value := req.ConfigValue.ValueString()
 
-	if len(normalized) > maxChromePolicyBytes {
+	// Guard on the raw input length before parsing, so an oversized blob is
+	// rejected without decoding and re-marshalling it.
+	if len(value) > maxChromePolicyBytes {
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Invalid Chrome Policy JSON",
-			fmt.Sprintf("chrome_policy exceeds maximum size of %d bytes when serialized as JSON (got %d bytes).", maxChromePolicyBytes, len(normalized)),
+			fmt.Sprintf("chrome_policy must be no larger than %d bytes (got %d bytes).", maxChromePolicyBytes, len(value)),
 		)
+		return
+	}
+
+	_, diags := normalizeChromePolicyJSON(value)
+	for _, diagnostic := range diags {
+		resp.Diagnostics.AddAttributeError(req.Path, diagnostic.Summary(), diagnostic.Detail())
 	}
 }
