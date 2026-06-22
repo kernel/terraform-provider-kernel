@@ -43,15 +43,29 @@ func TestNormalizeChromePolicyJSONDoesNotHTMLEscape(t *testing.T) {
 	}
 }
 
-func TestChromePolicyJSONPreservesLargeNumbers(t *testing.T) {
-	input := `{"LargeInteger":9007199254740993}`
-
-	got, diags := normalizeChromePolicyJSON(input)
-	if diags.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", diags)
+// The API stores chrome_policy as map[string]any, round-tripping every number
+// through float64. normalizeChromePolicyJSON must canonicalize numbers the same
+// way so semantic equality matches the value the API echoes back: equal-but
+// differently-spelled numbers collapse together, and integers beyond float64's
+// exact range collapse to the value the API actually stores rather than
+// producing a permanent diff.
+func TestNormalizeChromePolicyJSONCanonicalizesNumbersLikeAPI(t *testing.T) {
+	cases := []struct{ name, a, b string }{
+		{"trailing zero", `{"n":1.0}`, `{"n":1}`},
+		{"exponent form", `{"n":1e2}`, `{"n":100}`},
+		{"integer beyond float64 range", `{"n":9007199254740993}`, `{"n":9007199254740992}`},
 	}
-	if got != input {
-		t.Fatalf("normalized JSON mismatch\ngot:  %s\nwant: %s", got, input)
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			gotA, da := normalizeChromePolicyJSON(tt.a)
+			gotB, db := normalizeChromePolicyJSON(tt.b)
+			if da.HasError() || db.HasError() {
+				t.Fatalf("unexpected diagnostics: %v / %v", da, db)
+			}
+			if gotA != gotB {
+				t.Fatalf("numbers did not canonicalize equally\n%s -> %s\n%s -> %s", tt.a, gotA, tt.b, gotB)
+			}
+		})
 	}
 }
 
@@ -106,6 +120,7 @@ func TestChromePolicyValueSemanticEquals(t *testing.T) {
 		want        bool
 	}{
 		{"reordered keys and whitespace are equal", `{"B":2,"A":1}`, "{\n\t\"A\": 1,\n\t\"B\": 2\n}", true},
+		{"equivalent numbers are equal", `{"A":1.0}`, `{"A":1}`, true},
 		{"different value not equal", `{"A":1}`, `{"A":2}`, false},
 		{"different key not equal", `{"A":1}`, `{"B":1}`, false},
 		{"invalid left treated as not equal", `{not json`, `{"A":1}`, false},

@@ -54,9 +54,16 @@ func normalizeChromePolicyJSON(input string) (string, diag.Diagnostics) {
 // a syntactically invalid or trailing-garbage input returns an error.
 // Duplicate keys within the object follow encoding/json's last-value-wins
 // behavior — detecting them would need a token-level scan and is out of scope.
+//
+// Numbers are intentionally decoded as float64 (no UseNumber). The API stores
+// chrome_policy as a JSON object (map[string]any), so every number round-trips
+// through float64: 1.0 collapses to 1, trailing zeros drop, and integers beyond
+// float64's exact range are rounded. Normalizing the same way is what lets
+// semantic equality match the value the API echoes back into state; preserving
+// the literal spelling here would surface a permanent chrome_policy diff after
+// the first apply.
 func decodeChromePolicy(input string) (map[string]any, error) {
 	decoder := json.NewDecoder(strings.NewReader(input))
-	decoder.UseNumber()
 
 	var policy map[string]any
 	if err := decoder.Decode(&policy); err != nil {
