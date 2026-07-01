@@ -12,7 +12,8 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
 - Run opt-in acceptance tests with real credentials before the first public v0 release:
-  - `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test ./internal/resources/browserpool -run TestAcc`
+  - `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`
+  - or run the manual `Acceptance` GitHub Actions workflow with `KERNEL_API_KEY` and `KERNEL_PROJECT_ID` repository secrets configured.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
 - Confirm there is no branch named like the release tag, for example `v0.1.0`.
