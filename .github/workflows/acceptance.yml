@@ -1,0 +1,51 @@
+name: Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  browser-pool:
+    name: Browser pool acceptance
+    runs-on: ubuntu-latest
+    # Keep the job timeout above the go test -timeout below: the job budget
+    # also covers checkout/toolchain setup, and if it fires first it kills the
+    # test process before t.Cleanup can delete the pools it created.
+    timeout-minutes: 40
+    env:
+      TF_ACC: "1"
+      KERNEL_ACC: "1"
+      KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+      KERNEL_PROJECT_ID: ${{ secrets.KERNEL_PROJECT_ID }}
+      KERNEL_ALT_PROJECT_ID: ${{ secrets.KERNEL_ALT_PROJECT_ID }}
+      KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.5"
+          terraform_wrapper: false
+
+      - name: Check required secrets
+        run: |
+          : "${KERNEL_API_KEY:?Set the KERNEL_API_KEY repository secret before running acceptance tests.}"
+          : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running acceptance tests.}"
+
+      - name: Run browser pool acceptance tests
+        run: go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
