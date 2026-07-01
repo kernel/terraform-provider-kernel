@@ -148,3 +148,4 @@ The acceptance test creates uniquely named browser pools and uses durable `force
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for package layout, Terraform semantics, testing strategy, and release planning.
+

@@ -4,7 +4,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
 
 ## Release Preconditions
 
-- Work from a clean `main` checkout after the PR stack is merged.
+- Work from a clean checkout of the repository's canonical post-merge branch after the PR stack is merged. The current default branch is `provider-repo-scaffold`; confirm with `gh repo view --json defaultBranchRef` before tagging.
 - Run `bash scripts/check-docs.sh`.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
