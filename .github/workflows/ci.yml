@@ -42,6 +42,12 @@ jobs:
       - name: Check Terraform examples
         run: terraform fmt -check -recursive examples
 
+      - name: Check Markdown links
+        run: bash scripts/check-markdown-links.sh
+
+      - name: Validate Terraform examples
+        run: bash scripts/check-examples.sh
+
       - name: Test
         run: go test -short -timeout=2m ./...
 
