@@ -4,6 +4,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
 
 ## Release Preconditions
 
+- The first public release ships as a complete v1. v0 tags and release artifacts stay internal to the Kernel organization; do not publish v0 to the public Terraform Registry.
 - Work from a clean `main` checkout after the PR stack is merged.
 - Run `bash scripts/check-docs.sh`.
 - Run `bash scripts/check-markdown-links.sh`.
@@ -11,11 +12,13 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
-- Run opt-in acceptance tests with real credentials before the first public v0 release:
+- Run opt-in acceptance tests with real credentials before the first public release:
   - `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`
   - or run the manual `Acceptance` GitHub Actions workflow with `KERNEL_API_KEY` and `KERNEL_PROJECT_ID` repository secrets configured.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
+- Confirm the repository license before the first public release. Do not publish a public tag until `LICENSE` exists or the release owner has explicitly documented the licensing decision.
+- Confirm GitHub private vulnerability reporting or a public security contact is configured and reflected in `SECURITY.md`.
 - Confirm there is no branch named like the release tag, for example `v0.1.0`.
 
 ## Registry Release Assets
