@@ -173,22 +173,7 @@ Acceptance tests must:
 
 PRs must be small, coherent, and shippable. No PR should rely on hidden follow-up work to keep the repo healthy.
 
-Updated PR4 split:
-
-1. Browser pool schema/model/validators/JSON normalization.
-2. Browser pool expand helpers from Terraform model to SDK params.
-3. Browser pool flatten helpers from SDK response to Terraform state.
-
-Then continue:
-
-4. Browser pool create/read.
-5. Browser pool update/delete.
-6. Browser pool import.
-7. Data sources.
-8. Extra unit coverage and cleanup.
-9. Acceptance test harness.
-10. Examples/docs.
-11. CI/release/security checklist.
+Prefer PRs that add one durable behavior at a time, with tests that prove the new contract and preserve previously shipped behavior.
 
 ## Review Gates
 
