@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
+	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
 
 type projectCreateStatus uint8
@@ -27,6 +29,7 @@ type projectCreateResult struct {
 
 type projectClient interface {
 	CreateProject(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
+	GetProject(context.Context, string) (*kernel.Project, error)
 }
 
 type projectResource struct {
@@ -90,11 +93,67 @@ func (r *projectResource) create(ctx context.Context, plan projectModel) (projec
 	return projectCreateResult{State: state, Status: projectCreateSucceeded}, diags
 }
 
+func (r *projectResource) read(ctx context.Context, state projectModel) (projectModel, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if r.client == nil {
+		addMissingClientDiagnostic(&diags)
+		return projectModel{}, false, diags
+	}
+
+	id, ok := stateProjectID(state, "read", &diags)
+	if !ok {
+		return projectModel{}, false, diags
+	}
+
+	remote, err := r.client.GetProject(ctx, id)
+	if err != nil {
+		if projectscope.IsNotFound(err) {
+			return projectModel{}, true, diags
+		}
+		diags.AddError("Read Kernel Project", err.Error())
+		return projectModel{}, false, diags
+	}
+	if remote == nil {
+		diags.AddError(
+			"Read Kernel Project",
+			"Kernel returned an empty response while reading project "+strconv.Quote(id)+".",
+		)
+		return projectModel{}, false, diags
+	}
+
+	nextState, flattenDiags := flattenProject(*remote)
+	diags.Append(flattenDiags...)
+	if diags.HasError() {
+		return projectModel{}, false, diags
+	}
+	if nextState.ID.ValueString() != id {
+		diags.AddError(
+			"Invalid Kernel Project Response",
+			"Kernel returned project id "+strconv.Quote(nextState.ID.ValueString())+" while reading "+strconv.Quote(id)+".",
+		)
+		return projectModel{}, false, diags
+	}
+	return nextState, false, diags
+}
+
 func addMissingClientDiagnostic(diags *diag.Diagnostics) {
 	diags.AddError(
 		"Missing Kernel Client",
 		"The Kernel provider was not configured before using the project resource.",
 	)
+}
+
+func stateProjectID(state projectModel, operation string, diags *diag.Diagnostics) (string, bool) {
+	if state.ID.IsNull() || state.ID.IsUnknown() || state.ID.ValueString() == "" {
+		diags.AddAttributeError(
+			path.Root("id"),
+			"Missing Kernel Project ID",
+			"Cannot "+operation+" a Kernel project without a known id in Terraform state.",
+		)
+		return "", false
+	}
+
+	return state.ID.ValueString(), true
 }
 
 func projectCreateFailureIsDefinite(err error) bool {
