@@ -68,6 +68,9 @@ func TestCreateProjectCreatesAndFlattensState(t *testing.T) {
 func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 	t.Parallel()
 
+	conflictError := projectAPIError(t, http.StatusConflict, `{}`)
+	malformedSuccess := projectForTest(t, `{"id":"project_123"}`)
+	mismatchedSuccess := projectForTest(t, `{"id":"project_123","name":"Different"}`)
 	tests := map[string]struct {
 		resource    *projectResource
 		wantStatus  projectCreateStatus
@@ -85,7 +88,7 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 		"client error response": {
 			resource: newResourceWithClient(fakeProjectClient{
 				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
-					return nil, projectAPIError(t, http.StatusConflict, `{}`)
+					return nil, conflictError
 				},
 			}),
 			wantStatus:  projectCreateFailed,
@@ -115,8 +118,7 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 		"malformed success preserves valid id": {
 			resource: newResourceWithClient(fakeProjectClient{
 				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
-					project := projectForTest(t, `{"id":"project_123"}`)
-					return &project, nil
+					return &malformedSuccess, nil
 				},
 			}),
 			wantStatus:  projectCreateUncertain,
@@ -128,8 +130,7 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 		"mismatched success name preserves planned name": {
 			resource: newResourceWithClient(fakeProjectClient{
 				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
-					project := projectForTest(t, `{"id":"project_123","name":"Different"}`)
-					return &project, nil
+					return &mismatchedSuccess, nil
 				},
 			}),
 			wantStatus:  projectCreateUncertain,
