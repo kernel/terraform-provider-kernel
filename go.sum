@@ -106,8 +106,8 @@ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOl
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
 github.com/jhump/protoreflect v1.17.0 h1:qOEr613fac2lOuTgWN4tPAtLL7fUSbuJL5X5XumQh94=
 github.com/jhump/protoreflect v1.17.0/go.mod h1:h9+vUUL38jiBzck8ck+6G/aeMX8Z4QUY/NiJPwPNi+8=
-github.com/kernel/kernel-go-sdk v0.72.0 h1:QyT5v2PMJjp9GQCGV4fi1IWcCF/fcsFcz1MTXPA/WZU=
-github.com/kernel/kernel-go-sdk v0.72.0/go.mod h1:EeZzSuHZVeHKxKCPUzxou2bovNGhXaz0RXrSqKNf1AQ=
+github.com/kernel/kernel-go-sdk v0.76.0 h1:bnGTPq69M6+Qfr0Bkkl6EGqvr0dfGrCwdiEYAx3pHOc=
+github.com/kernel/kernel-go-sdk v0.76.0/go.mod h1:EeZzSuHZVeHKxKCPUzxou2bovNGhXaz0RXrSqKNf1AQ=
 github.com/kevinburke/ssh_config v1.2.0 h1:x584FjTGwHzMwvHx18PXxbBVzfnxogHaAReU4gf13a4=
 github.com/kevinburke/ssh_config v1.2.0/go.mod h1:CT57kijsi8u/K/BOFA39wgDQJ9CxiF4nAY/ojJ6r6mM=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
