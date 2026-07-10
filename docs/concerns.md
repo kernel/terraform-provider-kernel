@@ -20,15 +20,13 @@ Revisit only as an explicit architecture amendment. If accepted later, the desig
 
 ### #25: Terraform Plugin Framework Code Generation
 
-Disposition: v1/future.
+Disposition: rejected for v1; future-only re-evaluation.
 
-Code generation may reduce schema/model maintenance, but it is not required for v0. A future codegen effort must preserve the current hand-reviewed behavior boundary:
+A v0.4.1 prototype generated valid extension data-source schema/model code, but the checked-in specification, generated output, and command totaled 151 lines to replace 57 direct Go lines and introduced non-idiomatic `Id`/`ProjectId` naming. V1 keeps schemas and models handwritten.
 
-- generated code may own mechanical schema/model shape;
-- handwritten code must still own CRUD semantics, exact lookup behavior, update patch semantics, import, non-force delete, and chrome-policy normalization;
-- runtime/session operations must remain excluded.
+See [Terraform Framework Code Generation Decision](codegen.md) for the measured evidence and future reconsideration criteria. Any future evaluation must still keep CRUD semantics, exact lookup behavior, update patches, import, non-force delete, Chrome-policy normalization, sensitive state, and runtime/session exclusions handwritten.
 
-Do not start `tfplugingen-framework` migration in v0.
+Do not add `tfplugingen-framework`, generated provider Go, or a codegen drift check in v1.
 
 ## API And SDK Contract Gaps
 
@@ -145,4 +143,4 @@ These are provider-side follow-ups that remain within the v0/v1 boundary unless 
 - Keep provider `api_key` sensitive.
 - Keep project scoping explicit: resource/data-source `project_id`, provider default `project_id`, then API-key-bound default when neither is set.
 - Keep acceptance tests opt-in and project-scoped with `KERNEL_PROJECT_ID`.
-- Consider broad code generation only after the API/SDK durable contract gaps above are resolved.
+- Keep provider schemas/models handwritten for v1; API/SDK contract cleanup alone does not make broad code generation worthwhile.
