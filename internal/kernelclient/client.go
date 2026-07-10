@@ -78,10 +78,22 @@ func (c Clients) DefaultProjectID() string {
 
 // Projects are org-scoped, so their methods take no project.
 
+func (c Clients) CreateProject(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
+	return c.projects.New(ctx, params, noMutationRetries())
+}
+
 // GetProject resolves a project by ID or by name; the API treats the path
 // parameter as id-or-name (names are unique within an organization).
 func (c Clients) GetProject(ctx context.Context, idOrName string) (*kernel.Project, error) {
 	return c.projects.Get(ctx, idOrName)
+}
+
+func (c Clients) UpdateProject(ctx context.Context, id string, params kernel.ProjectUpdateParams) (*kernel.Project, error) {
+	return c.projects.Update(ctx, id, params, noMutationRetries())
+}
+
+func (c Clients) DeleteProject(ctx context.Context, id string) error {
+	return c.projects.Delete(ctx, id, noMutationRetries())
 }
 
 // The remaining methods are project-scoped and take the resolved project
