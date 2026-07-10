@@ -4,7 +4,7 @@ Terraform provider for durable Kernel infrastructure configuration.
 
 This provider manages desired state only. Browser/session runtime operations stay in the Kernel SDK and API.
 
-## Supported In v0
+## Supported
 
 Provider configuration:
 
@@ -12,9 +12,10 @@ Provider configuration:
 - `base_url`
 - `project_id`
 
-Resource:
+Resources:
 
 - `kernel_browser_pool`
+- `kernel_project`
 
 Data sources:
 
@@ -26,8 +27,9 @@ Data sources:
 Import:
 
 - `kernel_browser_pool` by canonical browser pool ID
+- `kernel_project` by canonical project ID
 
-## Not Supported In v0
+## Not Supported
 
 The provider intentionally does not manage:
 
@@ -37,7 +39,7 @@ The provider intentionally does not manage:
 - logs, screenshots, or live view
 - runtime status or standby state
 - force-release or recovery operations
-- API key or project resources
+- API key, profile, proxy, or extension resources
 - extension upload, download, delete, or Chrome Store operations
 
 ## Quickstart
@@ -74,11 +76,14 @@ resource "kernel_browser_pool" "example" {
 }
 ```
 
-Import an existing browser pool. The bare form resolves the project like create (provider default, else the API key's binding); use the project-qualified form to import from a different project:
+Import existing resources by canonical ID. For browser pools, the bare form
+resolves the project like create (provider default, else the API key's binding);
+use the project-qualified form to import from a different project:
 
 ```sh
 terraform import kernel_browser_pool.example <browser-pool-id>
 terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
+terraform import kernel_project.example <project-id>
 ```
 
 ## Local Development
