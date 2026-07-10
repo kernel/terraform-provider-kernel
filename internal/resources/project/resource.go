@@ -15,6 +15,12 @@ import (
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
 
+var (
+	_ tfresource.Resource                = (*projectResource)(nil)
+	_ tfresource.ResourceWithConfigure   = (*projectResource)(nil)
+	_ tfresource.ResourceWithImportState = (*projectResource)(nil)
+)
+
 type projectCreateResult struct {
 	State        projectModel
 	UncertainErr error
@@ -33,6 +39,35 @@ type projectResource struct {
 
 func newResourceWithClient(client projectClient) *projectResource {
 	return &projectResource{client: client}
+}
+
+func NewResource() tfresource.Resource {
+	return &projectResource{}
+}
+
+func (r *projectResource) Metadata(ctx context.Context, req tfresource.MetadataRequest, resp *tfresource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_project"
+}
+
+func (r *projectResource) Schema(ctx context.Context, req tfresource.SchemaRequest, resp *tfresource.SchemaResponse) {
+	resp.Schema = projectSchema()
+}
+
+func (r *projectResource) Configure(ctx context.Context, req tfresource.ConfigureRequest, resp *tfresource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(projectClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Kernel Client Type",
+			"Expected provider data to implement the project durable client contract.",
+		)
+		return
+	}
+
+	r.client = client
 }
 
 func projectImportState(id string) (projectModel, diag.Diagnostics) {
