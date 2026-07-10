@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ var _ projectClient = kernelclient.Clients{}
 
 type fakeProjectClient struct {
 	create func(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
+	get    func(context.Context, string) (*kernel.Project, error)
 }
 
 func (f fakeProjectClient) CreateProject(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
@@ -25,6 +27,14 @@ func (f fakeProjectClient) CreateProject(ctx context.Context, params kernel.Proj
 	}
 	return f.create(ctx, params)
 }
+
+func (f fakeProjectClient) GetProject(ctx context.Context, id string) (*kernel.Project, error) {
+	if f.get == nil {
+		return nil, errors.New("unexpected get")
+	}
+	return f.get(ctx, id)
+}
+
 func TestCreateProjectCreatesAndFlattensState(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +85,7 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 		"client error response": {
 			resource: newResourceWithClient(fakeProjectClient{
 				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
-					return nil, projectAPIError(http.StatusConflict)
+					return nil, projectAPIError(t, http.StatusConflict, `{}`)
 				},
 			}),
 			wantStatus:  projectCreateFailed,
@@ -187,13 +197,18 @@ func TestCreateProjectReportsEveryMalformedResponseField(t *testing.T) {
 	}
 }
 
-func projectAPIError(status int) *kernel.Error {
-	return &kernel.Error{
-		StatusCode: status,
-		Request: &http.Request{
-			Method: http.MethodPost,
-			URL:    &url.URL{Scheme: "https", Host: "api.example", Path: "/org/projects"},
-		},
-		Response: &http.Response{StatusCode: status, Status: http.StatusText(status)},
+func projectAPIError(t *testing.T, status int, raw string) *kernel.Error {
+	t.Helper()
+
+	var apiError kernel.Error
+	if err := json.Unmarshal([]byte(raw), &apiError); err != nil {
+		t.Fatalf("unmarshal API error: %v", err)
 	}
+	apiError.StatusCode = status
+	apiError.Request = &http.Request{
+		Method: http.MethodPost,
+		URL:    &url.URL{Scheme: "https", Host: "api.example", Path: "/org/projects"},
+	}
+	apiError.Response = &http.Response{StatusCode: status, Status: http.StatusText(status)}
+	return &apiError
 }
