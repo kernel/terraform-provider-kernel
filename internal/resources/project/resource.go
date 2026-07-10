@@ -117,6 +117,16 @@ func (r *projectResource) Update(ctx context.Context, req tfresource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, nextState)...)
 }
 
+func (r *projectResource) Delete(ctx context.Context, req tfresource.DeleteRequest, resp *tfresource.DeleteResponse) {
+	var state projectModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.delete(ctx, state)...)
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
