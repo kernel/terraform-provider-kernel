@@ -127,6 +127,16 @@ func (r *projectResource) Delete(ctx context.Context, req tfresource.DeleteReque
 	resp.Diagnostics.Append(r.delete(ctx, state)...)
 }
 
+func (r *projectResource) ImportState(ctx context.Context, req tfresource.ImportStateRequest, resp *tfresource.ImportStateResponse) {
+	state, importDiags := projectImportState(req.ID)
+	resp.Diagnostics.Append(importDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
