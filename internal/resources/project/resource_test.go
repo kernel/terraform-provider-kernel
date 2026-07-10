@@ -20,6 +20,7 @@ type fakeProjectClient struct {
 	create func(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
 	get    func(context.Context, string) (*kernel.Project, error)
 	update func(context.Context, string, kernel.ProjectUpdateParams) (*kernel.Project, error)
+	delete func(context.Context, string) error
 }
 
 func (f fakeProjectClient) CreateProject(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
@@ -41,6 +42,13 @@ func (f fakeProjectClient) UpdateProject(ctx context.Context, id string, params 
 		return nil, errors.New("unexpected update")
 	}
 	return f.update(ctx, id, params)
+}
+
+func (f fakeProjectClient) DeleteProject(ctx context.Context, id string) error {
+	if f.delete == nil {
+		return errors.New("unexpected delete")
+	}
+	return f.delete(ctx, id)
 }
 
 func TestCreateProjectCreatesAndFlattensState(t *testing.T) {
