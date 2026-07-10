@@ -70,11 +70,12 @@ Late or conditional v1 work:
 - masked `kernel_api_key` metadata lookup
 - `kernel_api_key` resource, only after plaintext-once, retry, rotation, import, and provider self-use semantics are accepted
 - project limits, only after their lifecycle is clearly separate from basic project management
-- an accepted, non-blocking code-generation canary for the `kernel_extension` data-source schema and model
 
 Blocked candidates must remain unimplemented until the API and a tagged SDK expose the required durable contract. Provider code must not guess missing semantics, patch generated SDK code, or add a fallback HTTP client to bypass the durable client module.
 
-The code-generation canary may proceed from a curated Terraform specification without waiting for broad OpenAPI contract cleanup. Broad OpenAPI-driven generation remains deferred.
+Terraform schema and model code generation remains deferred. The current tool produced valid output but did not reduce code or review complexity, and broad OpenAPI-driven generation would further weaken the durable allowlist.
+
+The evaluation evidence and reconsideration criteria are defined in [Terraform Framework Code Generation Decision](codegen.md).
 
 ## Explicit Non-Goals
 
