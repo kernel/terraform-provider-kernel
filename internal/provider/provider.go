@@ -9,10 +9,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/extension"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/profile"
-	"github.com/kernel/terraform-provider-kernel/internal/datasources/project"
+	projectdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/project"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/proxy"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 	"github.com/kernel/terraform-provider-kernel/internal/resources/browserpool"
+	projectresource "github.com/kernel/terraform-provider-kernel/internal/resources/project"
 )
 
 var _ provider.Provider = (*kernelProvider)(nil)
@@ -81,12 +82,13 @@ func (p *kernelProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		browserpool.NewResource,
+		projectresource.NewResource,
 	}
 }
 
 func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		project.NewDataSource,
+		projectdatasource.NewDataSource,
 		profile.NewDataSource,
 		proxy.NewDataSource,
 		extension.NewDataSource,
