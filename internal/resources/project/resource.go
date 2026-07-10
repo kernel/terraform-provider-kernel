@@ -80,6 +80,26 @@ func (r *projectResource) Create(ctx context.Context, req tfresource.CreateReque
 	addUncertainProjectCreateDiagnostic(&resp.Diagnostics, plan.Name.ValueString(), projectID, result.UncertainErr.Error())
 }
 
+func (r *projectResource) Read(ctx context.Context, req tfresource.ReadRequest, resp *tfresource.ReadResponse) {
+	var state projectModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	nextState, removed, readDiags := r.read(ctx, state)
+	resp.Diagnostics.Append(readDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if removed {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, nextState)...)
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
