@@ -30,6 +30,7 @@ type projectCreateResult struct {
 type projectClient interface {
 	CreateProject(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
 	GetProject(context.Context, string) (*kernel.Project, error)
+	UpdateProject(context.Context, string, kernel.ProjectUpdateParams) (*kernel.Project, error)
 }
 
 type projectResource struct {
@@ -134,6 +135,63 @@ func (r *projectResource) read(ctx context.Context, state projectModel) (project
 		return projectModel{}, false, diags
 	}
 	return nextState, false, diags
+}
+
+func (r *projectResource) update(ctx context.Context, plan, state projectModel) (projectModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if r.client == nil {
+		addMissingClientDiagnostic(&diags)
+		return projectModel{}, diags
+	}
+
+	id, ok := stateProjectID(state, "update", &diags)
+	if !ok {
+		return projectModel{}, diags
+	}
+
+	params, changed, expandDiags := expandProjectUpdate(plan, state)
+	diags.Append(expandDiags...)
+	if diags.HasError() {
+		return projectModel{}, diags
+	}
+	if !changed {
+		return state, diags
+	}
+
+	remote, err := r.client.UpdateProject(ctx, id, params)
+	if err != nil {
+		diags.AddError("Update Kernel Project", err.Error())
+		return projectModel{}, diags
+	}
+	if remote == nil {
+		diags.AddError(
+			"Update Kernel Project",
+			"Kernel returned an empty response while updating project "+strconv.Quote(id)+".",
+		)
+		return projectModel{}, diags
+	}
+
+	nextState, flattenDiags := flattenProject(*remote)
+	diags.Append(flattenDiags...)
+	if diags.HasError() {
+		return projectModel{}, diags
+	}
+	if nextState.ID.ValueString() != id {
+		diags.AddError(
+			"Invalid Kernel Project Response",
+			"Kernel returned project id "+strconv.Quote(nextState.ID.ValueString())+" while updating "+strconv.Quote(id)+".",
+		)
+		return projectModel{}, diags
+	}
+	if !nextState.Name.Equal(plan.Name) {
+		diags.AddError(
+			"Invalid Kernel Project Response",
+			"Kernel returned project name "+strconv.Quote(nextState.Name.ValueString())+" after updating to "+strconv.Quote(plan.Name.ValueString())+".",
+		)
+		return projectModel{}, diags
+	}
+
+	return nextState, diags
 }
 
 func addMissingClientDiagnostic(diags *diag.Diagnostics) {
