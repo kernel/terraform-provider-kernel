@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
@@ -56,6 +57,22 @@ func projectImportState(id string) (projectModel, diag.Diagnostics) {
 		ID:   types.StringValue(id),
 		Name: types.StringUnknown(),
 	}, diags
+}
+
+func (r *projectResource) Create(ctx context.Context, req tfresource.CreateRequest, resp *tfresource.CreateResponse) {
+	var plan projectModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	result, createDiags := r.create(ctx, plan)
+	persistState := result.Status == projectCreateSucceeded ||
+		(result.Status == projectCreateUncertain && result.State.ID.ValueString() != "")
+	if persistState {
+		resp.Diagnostics.Append(resp.State.Set(ctx, result.State)...)
+	}
+	resp.Diagnostics.Append(createDiags...)
 }
 
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
