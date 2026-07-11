@@ -13,7 +13,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
 - Run `goreleaser check`.
-- Run `goreleaser release --snapshot --clean --skip=sign` and inspect the
+- Run `goreleaser release --snapshot --clean` and inspect the
   registry-shaped archives and checksum file in `dist/`. Confirm every archive
   contains only its provider binary and the checksum file includes the renamed
   manifest. A snapshot proves artifact construction only; it is not a signed or
@@ -54,11 +54,16 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 ## GoReleaser Notes
 
 - `.goreleaser.yml` is the source of truth for registry artifact names, target
-  platforms, checksums, manifest inclusion, and checksum signing.
+  platforms, checksums, and manifest inclusion.
 - Normal CI runs `goreleaser check`; it does not cross-compile every target or
   publish artifacts.
-- Prefer a tag-triggered GitHub Actions release workflow once the signing key owner is decided.
-- Store the ASCII-armored private signing key as `GPG_PRIVATE_KEY` and its passphrase as `PASSPHRASE`.
+- `.github/workflows/release.yml` runs for `v*` tags with read-only repository
+  access. It requires a non-empty `LICENSE`, public repository visibility, and a
+  tag commit reachable from `main`, then builds and validates the unsigned
+  registry assets. The workflow artifact is retained for seven days for release
+  inspection.
+- Signing and publication remain separate manual release gates until release
+  ownership and a protected publication workflow are configured.
 
 ## Registry Setup
 
@@ -91,4 +96,3 @@ References:
 
 - HashiCorp Terraform provider publishing: https://developer.hashicorp.com/terraform/registry/providers/publishing
 - HashiCorp provider registry protocol: https://developer.hashicorp.com/terraform/internals/provider-registry-protocol
-- GoReleaser checksum signing: https://goreleaser.com/customization/sign/
