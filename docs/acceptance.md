@@ -4,7 +4,7 @@ This document is the live-API release gate for the provider's selected public
 surface. Unit tests remain the fast default. Acceptance tests run after changes
 reach `main`, through explicit local opt-in, or by manual workflow dispatch.
 
-The selected surface contains two managed resources and four read-only data
+The selected surface contains two managed resources and five read-only data
 sources. It does not claim coverage for future or unregistered Kernel objects.
 
 ## Gate Rules
@@ -29,7 +29,7 @@ export KERNEL_ALT_PROJECT_ID=... # optional second project
 export KERNEL_BASE_URL=...       # optional non-production API
 ```
 
-`KERNEL_PROJECT_ID` is required for the browser-pool resource and all four data
+`KERNEL_PROJECT_ID` is required for the browser-pool resource and all five data
 sources. The project resource is organization-scoped and does not require it.
 
 ## Matrix
@@ -38,6 +38,7 @@ sources. The project resource is organization-scoped and does not require it.
 | --- | --- | --- |
 | `kernel_project` resource | `./internal/resources/project` | Create, rename with stable ID, no-drift plan, canonical-ID import, post-import no drift, delete, and HTTP 404 verification. |
 | `kernel_browser_pool` resource | `./internal/resources/browserpool` | Create, durable update with stable ID, no-drift plan, provider-default and explicit project scope, bare and project-qualified import, non-force delete, and HTTP 404 verification. |
+| `kernel_browser_pool` data source | `./internal/datasources/browserpool` | Create a unique browser-pool fixture, read it by canonical ID and exact name with explicit project scope, verify normalized durable configuration and no drift, then delete and require coded `not_found`. |
 | `kernel_project` data source | `./internal/datasources/project` | Create a unique project fixture, read it by ID and exact name, read the provider-default project, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_profile` data source | `./internal/datasources/profile` | Create a durable profile fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_proxy` data source | `./internal/datasources/proxy` | Create a managed datacenter proxy fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable masked metadata and no drift, then delete and require coded `not_found`. |
@@ -53,21 +54,21 @@ Run packages independently for fast failure isolation:
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/datasources/browserpool -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/project -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/profile -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 ```
 
-The `Acceptance` workflow runs the same six packages as separate matrix jobs
+The `Acceptance` workflow runs the same seven packages as separate matrix jobs
 with `fail-fast: false` after changes reach `main` and on manual dispatch.
 
 ## Outside The Selected Surface
 
-The release does not include a browser-pool data source or profile, proxy,
-extension, deployment, app, or API-key resources. Runtime/session operations
-remain outside Terraform. Unregistered surfaces are not acceptance blockers for
-this selected release.
+The release does not include profile, proxy, extension, deployment, app, or
+API-key resources. Runtime/session operations remain outside Terraform.
+Unregistered surfaces are not acceptance blockers for this selected release.
 
 ## Release Record
 

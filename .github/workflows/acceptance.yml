@@ -24,6 +24,9 @@ jobs:
           - name: Browser pool
             package: ./internal/resources/browserpool
             project_id_required: true
+          - name: Browser pool data source
+            package: ./internal/datasources/browserpool
+            project_id_required: true
           - name: Project
             package: ./internal/resources/project
             project_id_required: false
