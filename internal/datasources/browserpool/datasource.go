@@ -3,15 +3,18 @@ package browserpool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
+	"github.com/kernel/kernel-go-sdk/shared"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
@@ -31,10 +34,12 @@ type browserPoolDataSource struct {
 }
 
 type browserPoolModel struct {
-	ID        types.String `tfsdk:"id"`
-	Name      types.String `tfsdk:"name"`
-	ProjectID types.String `tfsdk:"project_id"`
-	Size      types.Int64  `tfsdk:"size"`
+	ID           types.String `tfsdk:"id"`
+	Name         types.String `tfsdk:"name"`
+	ProjectID    types.String `tfsdk:"project_id"`
+	Size         types.Int64  `tfsdk:"size"`
+	ProfileID    types.String `tfsdk:"profile_id"`
+	ExtensionIDs types.List   `tfsdk:"extension_ids"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -73,6 +78,15 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 			"size": dschema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Number of browsers maintained in the pool.",
+			},
+			"profile_id": dschema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Resolved profile ID attached to the pool, if any.",
+			},
+			"extension_ids": dschema.ListAttribute{
+				Computed:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Resolved extension IDs attached to the pool, in load order.",
 			},
 		},
 	}
@@ -201,10 +215,85 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 	}
 
 	return browserPoolModel{
-		ID:   types.StringValue(pool.ID),
-		Name: name,
-		Size: types.Int64Value(pool.BrowserPoolConfig.Size),
+		ID:           types.StringValue(pool.ID),
+		Name:         name,
+		Size:         types.Int64Value(pool.BrowserPoolConfig.Size),
+		ProfileID:    flattenResolvedProfileID(pool, &diags),
+		ExtensionIDs: flattenResolvedExtensionIDs(pool, &diags),
 	}, diags
+}
+
+func flattenResolvedProfileID(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {
+	raw := pool.JSON.ProfileID.Raw()
+	if raw != "" {
+		if !datasources.FieldPresent(raw) {
+			datasources.AddInvalidResponseField(diags, "Browser Pool", "profile_id")
+			return types.StringNull()
+		}
+		if !datasources.ValidResponseString(raw, pool.JSON.ProfileID.Valid(), pool.ProfileID) {
+			datasources.AddInvalidResponseField(diags, "Browser Pool", "profile_id")
+			return types.StringNull()
+		}
+		return types.StringValue(pool.ProfileID)
+	}
+
+	profile := pool.BrowserPoolConfig.Profile
+	if !datasources.FieldPresent(pool.BrowserPoolConfig.JSON.Profile.Raw()) {
+		return types.StringNull()
+	}
+	if !datasources.ValidResponseString(profile.JSON.ID.Raw(), profile.JSON.ID.Valid(), profile.ID) {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.profile.id")
+		return types.StringNull()
+	}
+	return types.StringValue(profile.ID)
+}
+
+func flattenResolvedExtensionIDs(pool kernel.BrowserPool, diags *diag.Diagnostics) types.List {
+	raw := pool.JSON.ExtensionIDs.Raw()
+	if raw != "" {
+		return flattenStringList("extension_ids", raw, pool.JSON.ExtensionIDs.Valid(), pool.ExtensionIDs, diags)
+	}
+
+	config := pool.BrowserPoolConfig
+	if !datasources.FieldPresent(config.JSON.Extensions.Raw()) {
+		return types.ListValueMust(types.StringType, nil)
+	}
+	return flattenExtensionIDs(config.JSON.Extensions.Valid(), config.Extensions, diags)
+}
+
+func flattenStringList(field, raw string, valid bool, values []string, diags *diag.Diagnostics) types.List {
+	var decoded []string
+	if !datasources.FieldPresent(raw) || !valid || json.Unmarshal([]byte(raw), &decoded) != nil || len(decoded) != len(values) {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", field)
+		return types.ListNull(types.StringType)
+	}
+
+	elements := make([]attr.Value, 0, len(values))
+	for index, value := range values {
+		if value == "" || decoded[index] != value {
+			datasources.AddInvalidResponseField(diags, "Browser Pool", fmt.Sprintf("%s[%d]", field, index))
+			return types.ListNull(types.StringType)
+		}
+		elements = append(elements, types.StringValue(value))
+	}
+	return types.ListValueMust(types.StringType, elements)
+}
+
+func flattenExtensionIDs(valid bool, extensions []shared.BrowserExtension, diags *diag.Diagnostics) types.List {
+	if !valid {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.extensions")
+		return types.ListNull(types.StringType)
+	}
+
+	elements := make([]attr.Value, 0, len(extensions))
+	for index, extension := range extensions {
+		if !datasources.ValidResponseString(extension.JSON.ID.Raw(), extension.JSON.ID.Valid(), extension.ID) {
+			datasources.AddInvalidResponseField(diags, "Browser Pool", fmt.Sprintf("browser_pool_config.extensions[%d].id", index))
+			return types.ListNull(types.StringType)
+		}
+		elements = append(elements, types.StringValue(extension.ID))
+	}
+	return types.ListValueMust(types.StringType, elements)
 }
 
 func validResponseInt64(raw string, valid bool, value int64) bool {
