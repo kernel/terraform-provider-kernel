@@ -28,11 +28,13 @@ export KERNEL_API_KEY=...
 export KERNEL_PROJECT_ID=...
 export KERNEL_ALT_PROJECT_ID=... # optional second project
 export KERNEL_BASE_URL=...       # optional non-production API
+export KERNEL_ACC_APP_NAME=...   # release-owned running app fixture
+export KERNEL_ACC_APP_VERSION=... # exact fixture version
 ```
 
-Future fixture-backed data-source tests may add narrowly named variables only
-when the provider cannot create and clean up the fixture through a durable SDK
-operation. Secrets must remain GitHub Actions secrets and must not be printed.
+The app selectors are non-secret repository variables and must identify exactly
+one running app version in `KERNEL_PROJECT_ID`. Secrets must remain GitHub
+Actions secrets and must not be printed.
 
 ## Current Matrix
 
@@ -46,7 +48,7 @@ operation. Secrets must remain GitHub Actions secrets and must not be printed.
 | `kernel_extension` data source | Test present | A uniquely uploaded extension is read by canonical ID and exact name through explicit and provider-default project scope; metadata, no-drift planning, and post-destroy coded `not_found` are verified. | None. |
 | `kernel_profile` data source | Test present | A uniquely created durable profile is read by canonical ID and exact name through explicit and provider-default project scope; metadata, no-drift planning, and post-cleanup coded `not_found` are verified. | None. |
 | `kernel_proxy` data source | Test present | A uniquely created managed datacenter proxy is read by canonical ID and exact name through explicit and provider-default project scope; durable type/protocol metadata, no-drift planning, and post-cleanup coded `not_found` are verified without fixture credentials. | None. |
-| `kernel_app` data source | Fixture blocked; tag blocker | Unit, SDK transport, pagination, ambiguity, project-scope, and Framework state tests only. | Provide a release-owned running deployment fixture or a deterministic durable deployment setup. Verify exact app/version lookup without invocation and without exposing env values. |
+| `kernel_app` data source | Test present | A release-owned running app version is read by exact name/version through explicit and provider-default project scope; canonical deployment metadata and no-drift planning are verified without invocation. Unit coverage verifies action-name and environment-key flattening without environment values. | Keep `KERNEL_ACC_APP_NAME` and `KERNEL_ACC_APP_VERSION` pointed at exactly one running app version in the acceptance project. |
 | `kernel_api_key` data source | Deferred; unregistered | No provider surface yet. | Wait for a tagged SDK with exact-name filtering, then add masked ID/name lookup acceptance. |
 | Profile, proxy, deployment, and API-key resources | Deferred; unregistered | No provider surfaces yet. | Enter the matrix only after their documented API/SDK/state blockers are resolved and implementation lands. |
 
@@ -55,7 +57,7 @@ against the release commit. The release record below supplies that evidence.
 
 ## Current Commands
 
-Run the eight existing packages independently for fast failure isolation:
+Run the nine existing packages independently for fast failure isolation:
 
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
@@ -65,6 +67,7 @@ go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/profile -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/datasources/app -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/browserpool -run TestAcc
 ```
 
