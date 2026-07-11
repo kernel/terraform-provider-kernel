@@ -54,5 +54,17 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Set up GoReleaser
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          install-only: true
+
+      - name: Check release configuration
+        run: |
+          goreleaser check
+          jq -e '.version == 1 and .metadata.protocol_versions == ["6.0"]' terraform-registry-manifest.json
+
       - name: Check generated docs
         run: bash scripts/check-docs.sh

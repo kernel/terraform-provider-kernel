@@ -12,6 +12,12 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
+- Run `goreleaser check`.
+- Run `goreleaser release --snapshot --clean --skip=sign` and inspect the
+  registry-shaped archives and checksum file in `dist/`. Confirm every archive
+  contains only its provider binary and the checksum file includes the renamed
+  manifest. A snapshot proves artifact construction only; it is not a signed or
+  publishable release.
 - Run the complete [v1 acceptance matrix](acceptance.md) for every registered v1 resource and data source with real credentials before the first public release.
 - Configure `KERNEL_ACC_APP_NAME` and `KERNEL_ACC_APP_VERSION` repository variables to identify exactly one running app version in the acceptance project.
 - Review the [v1 migration guide](migration-v1.md) and include it in the release notes.
@@ -47,12 +53,12 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 
 ## GoReleaser Notes
 
+- `.goreleaser.yml` is the source of truth for registry artifact names, target
+  platforms, checksums, manifest inclusion, and checksum signing.
+- Normal CI runs `goreleaser check`; it does not cross-compile every target or
+  publish artifacts.
 - Prefer a tag-triggered GitHub Actions release workflow once the signing key owner is decided.
 - Store the ASCII-armored private signing key as `GPG_PRIVATE_KEY` and its passphrase as `PASSPHRASE`.
-- Configure GoReleaser to build the provider from `./cmd/terraform-provider-kernel`.
-- Configure archives so each zip contains only the provider binary with the Terraform Registry binary name.
-- Configure signing for checksum artifacts. GoReleaser documents checksum signing as the usual path for archives and packages.
-- Run `goreleaser release --snapshot --clean` locally before enabling real tag releases.
 
 ## Registry Setup
 
