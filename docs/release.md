@@ -12,11 +12,8 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
-- Run the complete opt-in acceptance matrix for every v1 resource and data source with real credentials before the first public release.
-  - Browser pools: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`.
-  - Extensions: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc`.
-  - Projects: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc`.
-  - The manual `Acceptance` workflow runs all three packages in parallel; expand its matrix as v1 resources land and keep live tests out of normal PR CI.
+- Run the complete [v1 acceptance matrix](acceptance.md) for every registered v1 resource and data source with real credentials before the first public release.
+- Use the commands and status table in `docs/acceptance.md` as the single source of truth. The manual `Acceptance` workflow runs all current packages in parallel; add each new package in the same PR as its first live test and keep live tests out of normal PR CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
     1. In the Kernel dashboard or durable API, find projects, browser pools, and extensions named `kernel-tf-*` that were created during the failed workflow run.
     2. Delete leaked browser pools first with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.

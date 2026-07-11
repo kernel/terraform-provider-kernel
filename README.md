@@ -152,18 +152,13 @@ Browser-pool acceptance tests additionally require:
 export KERNEL_PROJECT_ID="..."
 ```
 
-Run the durable resource acceptance tests:
-
-```sh
-go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
-go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc
-go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
-```
-
 The tests create uniquely named durable resources and register independent
 cleanup. Extension acceptance creates a small temporary Manifest V3 archive and
 tests checksum-driven replacement. Browser-pool deletion remains `force=false`.
 The tests do not acquire browsers or perform runtime recovery.
+
+Use the commands in the [v1 acceptance matrix](docs/acceptance.md), which is the
+single source for current coverage, tag blockers, and the release-run record.
 
 ## Architecture
 

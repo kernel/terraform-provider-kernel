@@ -335,6 +335,9 @@ Acceptance tests must:
 - avoid browser/session runtime operations
 - exercise import and real delete behavior for each resource
 
+The current live coverage and remaining release gates are tracked in the
+[v1 Acceptance Matrix](acceptance.md).
+
 ## PR Slicing
 
 PRs must be small, coherent, and shippable. No PR should rely on hidden follow-up work to keep the repo healthy.
