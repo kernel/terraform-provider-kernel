@@ -24,6 +24,7 @@ type Page[T any] struct {
 type ProfilePage = Page[kernel.Profile]
 type ProxyPage = Page[kernel.ProxyListResponse]
 type AppPage = Page[kernel.AppListResponse]
+type APIKeyPage = Page[kernel.APIKey]
 
 // Config configures the shared Kernel API clients. ProjectID is a default
 // only; the client never applies it implicitly.
@@ -37,6 +38,7 @@ type Config struct {
 type Clients struct {
 	defaultProjectID string
 	projects         kernel.ProjectService
+	apiKeys          kernel.APIKeyService
 	profiles         kernel.ProfileService
 	proxies          kernel.ProxyService
 	apps             kernel.AppService
@@ -68,6 +70,7 @@ func New(config Config, opts ...Option) Clients {
 	return Clients{
 		defaultProjectID: config.ProjectID,
 		projects:         kernel.NewProjectService(requestOpts...),
+		apiKeys:          kernel.NewAPIKeyService(requestOpts...),
 		profiles:         kernel.NewProfileService(requestOpts...),
 		proxies:          kernel.NewProxyService(requestOpts...),
 		apps:             kernel.NewAppService(requestOpts...),
@@ -99,6 +102,48 @@ func (c Clients) UpdateProject(ctx context.Context, id string, params kernel.Pro
 
 func (c Clients) DeleteProject(ctx context.Context, id string) error {
 	return c.projects.Delete(ctx, id, noMutationRetries())
+}
+
+func (c Clients) GetAPIKey(ctx context.Context, id string) (*kernel.APIKey, error) {
+	return c.apiKeys.Get(ctx, id, kernel.APIKeyGetParams{})
+}
+
+func (c Clients) ListAPIKeyPage(ctx context.Context, query string, offset int64) (APIKeyPage, error) {
+	var raw *http.Response
+	params := kernel.APIKeyListParams{
+		Query:  kernel.String(query),
+		Limit:  kernel.Int(nameLookupLimit),
+		Status: kernel.APIKeyListParamsStatusActive,
+	}
+	if offset > 0 {
+		params.Offset = kernel.Int(offset)
+	}
+
+	page, err := c.apiKeys.List(ctx, params, option.WithResponseInto(&raw))
+	if err != nil {
+		return APIKeyPage{}, err
+	}
+	if page == nil {
+		return APIKeyPage{}, fmt.Errorf("Kernel returned an empty API key list response")
+	}
+
+	next, ok, err := lookupNextOffset(raw, offset, "API key")
+	if err != nil {
+		return APIKeyPage{}, err
+	}
+	return APIKeyPage{
+		Items:       page.Items,
+		NextOffset:  next,
+		HasNextPage: ok,
+	}, nil
+}
+
+func (c Clients) CreateAPIKey(ctx context.Context, params kernel.APIKeyNewParams) (*kernel.CreatedAPIKey, error) {
+	return c.apiKeys.New(ctx, params, noMutationRetries())
+}
+
+func (c Clients) DeleteAPIKey(ctx context.Context, id string) error {
+	return c.apiKeys.Delete(ctx, id, noMutationRetries())
 }
 
 // The remaining methods are project-scoped and take the resolved project

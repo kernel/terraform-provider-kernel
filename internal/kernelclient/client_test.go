@@ -305,6 +305,87 @@ func TestListAppPageUsesExactFiltersAndPagination(t *testing.T) {
 	}
 }
 
+func TestListAPIKeyPageUsesActiveQueryAndPagination(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "must-not-scope-org-endpoint",
+	}, WithHTTPClient(recordingHTTPClientWithHeaders(&requests, func(req *http.Request) (string, http.Header) {
+		if req.URL.Path != "/org/api_keys" {
+			t.Fatalf("path = %q, want /org/api_keys", req.URL.Path)
+		}
+		if got, want := req.URL.Query().Get("query"), "deploy"; got != want {
+			t.Fatalf("query = %q, want %q", got, want)
+		}
+		if got, want := req.URL.Query().Get("status"), "active"; got != want {
+			t.Fatalf("status = %q, want %q", got, want)
+		}
+		if got, want := req.URL.Query().Get("limit"), "100"; got != want {
+			t.Fatalf("limit = %q, want %q", got, want)
+		}
+		if req.URL.Query().Get("offset") == "" {
+			return apiKeyListPage("key-1", "deploy"), http.Header{"X-Next-Offset": []string{"100"}, "X-Has-More": []string{"true"}}
+		}
+		if got, want := req.URL.Query().Get("offset"), "100"; got != want {
+			t.Fatalf("offset = %q, want %q", got, want)
+		}
+		return apiKeyListPage("key-2", "deploy"), http.Header{"X-Has-More": []string{"false"}}
+	})))
+
+	page, err := clients.ListAPIKeyPage(context.Background(), "deploy", 0)
+	if err != nil {
+		t.Fatalf("ListAPIKeyPage returned error: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "key-1" || !page.HasNextPage || page.NextOffset != 100 {
+		t.Fatalf("first page = %#v", page)
+	}
+	page, err = clients.ListAPIKeyPage(context.Background(), "deploy", 100)
+	if err != nil {
+		t.Fatalf("ListAPIKeyPage second page returned error: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "key-2" || page.HasNextPage {
+		t.Fatalf("second page = %#v", page)
+	}
+	for index, request := range requests {
+		if request.ProjectID != "" {
+			t.Fatalf("request %d project = %q, want unscoped org endpoint", index, request.ProjectID)
+		}
+	}
+}
+
+func TestGetAPIKeyUsesOrganizationScope(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:    "test-api-key",
+		BaseURL:   "https://api.example",
+		ProjectID: "must-not-scope-org-endpoint",
+	}, WithHTTPClient(recordingHTTPClient(&requests, func(req *http.Request) string {
+		if req.URL.Path != "/org/api_keys/key-1" {
+			t.Fatalf("path = %q, want /org/api_keys/key-1", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("include_deleted"); got != "" {
+			t.Fatalf("include_deleted = %q, want omitted", got)
+		}
+		return apiKeyJSON("key-1", "deploy")
+	})))
+
+	key, err := clients.GetAPIKey(context.Background(), "key-1")
+	if err != nil {
+		t.Fatalf("GetAPIKey returned error: %v", err)
+	}
+	if key == nil || key.ID != "key-1" {
+		t.Fatalf("GetAPIKey = %#v, want key-1", key)
+	}
+	if got := requests[0].ProjectID; got != "" {
+		t.Fatalf("project header = %q, want organization-scoped request", got)
+	}
+}
+
 func TestGetExtensionResolvesByIDOrNameWithinProject(t *testing.T) {
 	t.Parallel()
 
@@ -399,6 +480,21 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 			path:   "/org/projects/project_123",
 			call: func(ctx context.Context, clients Clients) error {
 				return clients.DeleteProject(ctx, "project_123")
+			},
+		},
+		"API key create": {
+			method: http.MethodPost,
+			path:   "/org/api_keys",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateAPIKey(ctx, kernel.APIKeyNewParams{Name: "Fixture"})
+				return err
+			},
+		},
+		"API key delete": {
+			method: http.MethodDelete,
+			path:   "/org/api_keys/key_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteAPIKey(ctx, "key_123")
 			},
 		},
 		"profile create": {
@@ -609,8 +705,24 @@ func TestClientsExposeDeploymentReadOnly(t *testing.T) {
 	}
 }
 
+func TestClientsDoNotExposeAPIKeyRotation(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := reflect.TypeOf(Clients{}).MethodByName("RotateAPIKey"); ok {
+		t.Fatal("Clients exposes unsafe API key rotation")
+	}
+}
+
 func appListPage(id string) string {
 	return `[{"id":"` + id + `","app_name":"demo","version":"v1","region":"aws.us-east-1a","deployment":"deployment-1","actions":[],"env_vars":{}}]`
+}
+
+func apiKeyListPage(id, name string) string {
+	return `[` + apiKeyJSON(id, name) + `]`
+}
+
+func apiKeyJSON(id, name string) string {
+	return `{"id":"` + id + `","name":"` + name + `","masked_key":"kern****test","created_at":"2026-01-01T00:00:00Z","created_by":{"id":"user-1","email":"user@example.com","name":"User"},"deleted_at":null,"expires_at":null,"project_id":null,"project_name":null}`
 }
 
 type capturedRequest struct {

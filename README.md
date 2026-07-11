@@ -20,6 +20,7 @@ Resources:
 
 Data sources:
 
+- `kernel_api_key`
 - `kernel_app`
 - `kernel_browser_pool`
 - `kernel_deployment`

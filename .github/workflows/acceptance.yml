@@ -46,6 +46,9 @@ jobs:
             package: ./internal/datasources/app
             project_id_required: true
             app_fixture_required: true
+          - name: API key data source
+            package: ./internal/datasources/apikey
+            project_id_required: true
           - name: Deployment data source
             package: ./internal/datasources/deployment
             project_id_required: true

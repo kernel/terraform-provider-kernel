@@ -23,13 +23,14 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Review the [v1 migration guide](migration-v1.md) and include it in the release notes.
 - Use the commands and status table in `docs/acceptance.md` as the single source of truth. The manual `Acceptance` workflow runs all current packages in parallel; add each new package in the same PR as its first live test and keep live tests out of normal PR CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
-    1. In the Kernel dashboard or durable API, find projects, browser pools, extensions, profiles, and proxies named `kernel-tf-*` that were created during the failed workflow run.
+    1. In the Kernel dashboard or durable API, find projects, browser pools, extensions, profiles, proxies, and API keys named `kernel-tf-*` that were created during the failed workflow run.
     2. Delete leaked browser pools first with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.
     3. Delete leaked extensions after removing any durable browser-pool references to them. Do not mutate pools or running browsers implicitly.
     4. Delete leaked profiles and managed datacenter proxies after removing durable references. Do not run proxy health checks as cleanup.
-    5. Delete a leaked project only after its child resources are gone and the organization still has another active project.
-    6. Do not delete the release-owned app fixture; it is not created by the acceptance run.
-    7. Read each test-owned canonical resource ID and require a 404 before considering cleanup complete.
+    5. Delete leaked API keys with an organization-wide administrative key. Never delete the credential running the acceptance workflow.
+    6. Delete a leaked project only after its child resources are gone and the organization still has another active project.
+    7. Do not delete the release-owned app fixture; it is not created by the acceptance run.
+    8. Read each test-owned canonical resource ID and require a 404 before considering cleanup complete.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
 - Confirm the repository license before the first public release. The release workflow fails unless a non-empty `LICENSE` exists.

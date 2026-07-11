@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	apikeydatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/apikey"
 	appdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/app"
 	browserpooldatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/browserpool"
 	deploymentdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/deployment"
@@ -94,6 +95,7 @@ func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resour
 func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		appdatasource.NewDataSource,
+		apikeydatasource.NewDataSource,
 		browserpooldatasource.NewDataSource,
 		deploymentdatasource.NewDataSource,
 		projectdatasource.NewDataSource,
