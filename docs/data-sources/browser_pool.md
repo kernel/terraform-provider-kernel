@@ -24,5 +24,9 @@ Lookup durable Kernel browser pool configuration.
 ### Read-Only
 
 - `extension_ids` (List of String) Resolved extension IDs attached to the pool, in load order.
+- `headless` (Boolean) Whether browsers use a headless image.
+- `kiosk_mode` (Boolean) Whether browsers launch in kiosk mode.
 - `profile_id` (String) Resolved profile ID attached to the pool, if any.
+- `proxy_id` (String) Proxy ID attached to browsers in the pool, if any.
 - `size` (Number) Number of browsers maintained in the pool.
+- `stealth` (Boolean) Whether browsers launch in stealth mode.

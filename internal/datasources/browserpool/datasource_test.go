@@ -45,7 +45,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -134,7 +134,18 @@ func TestReadSetsTerraformState(t *testing.T) {
 
 	ds := newDataSourceWithClient(fakeBrowserPoolClient{
 		get: func(context.Context, string, string) (*kernel.BrowserPool, error) {
-			return browserPoolForTest("pool-1", "Pool", 2), nil
+			return browserPoolFromJSON(`{
+				"id":"pool-1",
+				"name":"Pool",
+				"extension_ids":[],
+				"browser_pool_config":{
+					"size":2,
+					"proxy_id":"proxy-1",
+					"headless":true,
+					"kiosk_mode":false,
+					"stealth":true
+				}
+			}`), nil
 		},
 	})
 	var schema datasource.SchemaResponse
@@ -166,6 +177,66 @@ func TestReadSetsTerraformState(t *testing.T) {
 		t.Fatalf("profile_id = %v, want null", state.ProfileID)
 	}
 	assertBrowserPoolStringList(t, state.ExtensionIDs, nil)
+	if state.ProxyID.ValueString() != "proxy-1" || !state.Headless.ValueBool() || state.KioskMode.IsNull() || state.KioskMode.ValueBool() || !state.Stealth.ValueBool() {
+		t.Fatalf("launch state = %#v", state)
+	}
+}
+
+func TestFlattenBrowserPoolLaunchConfiguration(t *testing.T) {
+	t.Parallel()
+
+	state, diags := flattenBrowserPool(*browserPoolFromJSON(`{
+		"id":"pool-1",
+		"extension_ids":[],
+		"browser_pool_config":{
+			"size":1,
+			"proxy_id":"proxy-1",
+			"headless":true,
+			"kiosk_mode":false,
+			"stealth":true
+		}
+	}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if state.ProxyID.ValueString() != "proxy-1" {
+		t.Fatalf("proxy_id = %q, want proxy-1", state.ProxyID.ValueString())
+	}
+	if !state.Headless.ValueBool() {
+		t.Fatal("headless = false, want true")
+	}
+	if state.KioskMode.IsNull() || state.KioskMode.ValueBool() {
+		t.Fatalf("kiosk_mode = %v, want known false", state.KioskMode)
+	}
+	if !state.Stealth.ValueBool() {
+		t.Fatal("stealth = false, want true")
+	}
+}
+
+func TestFlattenBrowserPoolRejectsInvalidLaunchConfiguration(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"empty proxy ID":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":""}}`,
+		"null proxy ID":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":null}}`,
+		"non-string proxy":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":1}}`,
+		"null headless":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":null}}`,
+		"non-bool headless": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":"true"}}`,
+		"null kiosk":        `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":null}}`,
+		"non-bool kiosk":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":1}}`,
+		"null stealth":      `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":null}}`,
+		"non-bool stealth":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":{}}}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, diags := flattenBrowserPool(*browserPoolFromJSON(body))
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics")
+			}
+		})
+	}
 }
 
 func TestFlattenBrowserPoolResolvedReferences(t *testing.T) {
@@ -357,6 +428,10 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"size":          tftypes.Number,
 			"profile_id":    tftypes.String,
 			"extension_ids": tftypes.List{ElementType: tftypes.String},
+			"proxy_id":      tftypes.String,
+			"headless":      tftypes.Bool,
+			"kiosk_mode":    tftypes.Bool,
+			"stealth":       tftypes.Bool,
 		}},
 		map[string]tftypes.Value{
 			"id":            id,
@@ -365,6 +440,10 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"size":          tftypes.NewValue(tftypes.Number, nil),
 			"profile_id":    tftypes.NewValue(tftypes.String, nil),
 			"extension_ids": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+			"proxy_id":      tftypes.NewValue(tftypes.String, nil),
+			"headless":      tftypes.NewValue(tftypes.Bool, nil),
+			"kiosk_mode":    tftypes.NewValue(tftypes.Bool, nil),
+			"stealth":       tftypes.NewValue(tftypes.Bool, nil),
 		},
 	)
 }
