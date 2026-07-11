@@ -361,6 +361,26 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 				return clients.DeleteBrowserPool(ctx, "project_123", "pool_123")
 			},
 		},
+		"extension upload": {
+			method:    http.MethodPost,
+			path:      "/extensions",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.UploadExtension(ctx, "project_123", kernel.ExtensionUploadParams{
+					File: strings.NewReader("extension archive"),
+					Name: kernel.String("Extension"),
+				})
+				return err
+			},
+		},
+		"extension delete": {
+			method:    http.MethodDelete,
+			path:      "/extensions/extension_123",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteExtension(ctx, "project_123", "extension_123")
+			},
+		},
 	}
 
 	for name, test := range tests {
@@ -439,6 +459,17 @@ func TestClientsDoNotExposeRuntimeBrowserPoolMethods(t *testing.T) {
 	for _, name := range []string{"Acquire", "Release", "Flush"} {
 		if _, ok := typ.MethodByName(name); ok {
 			t.Fatalf("Clients exposes runtime method %s", name)
+		}
+	}
+}
+
+func TestClientsDoNotExposeExtensionArchiveMethods(t *testing.T) {
+	t.Parallel()
+
+	typ := reflect.TypeOf(Clients{})
+	for _, name := range []string{"DownloadExtension", "DownloadExtensionFromChromeStore"} {
+		if _, ok := typ.MethodByName(name); ok {
+			t.Fatalf("Clients exposes extension archive method %s", name)
 		}
 	}
 }
