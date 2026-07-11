@@ -24,6 +24,9 @@ jobs:
           - name: Project
             package: ./internal/resources/project
             project_id_required: false
+          - name: Extension
+            package: ./internal/resources/extension
+            project_id_required: true
     # Keep the job timeout above the go test timeout so Go can report the test
     # timeout before the runner stops the job. Either hard timeout can bypass
     # t.Cleanup, so release operators still inspect for leaked test resources.
@@ -44,7 +47,7 @@ jobs:
         env:
           KERNEL_PROJECT_ID: ${{ secrets.KERNEL_PROJECT_ID }}
         run: |
-          : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running browser-pool acceptance tests.}"
+          : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running project-scoped acceptance tests.}"
 
       - name: Checkout
         uses: actions/checkout@v6

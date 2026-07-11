@@ -15,6 +15,7 @@ Provider configuration:
 Resources:
 
 - `kernel_browser_pool`
+- `kernel_extension`
 - `kernel_project`
 
 Data sources:
@@ -27,6 +28,7 @@ Data sources:
 Import:
 
 - `kernel_browser_pool` by canonical browser pool ID
+- `kernel_extension` by canonical extension ID, optionally qualified with its project ID
 - `kernel_project` by canonical project ID
 
 ## Not Supported
@@ -39,8 +41,8 @@ The provider intentionally does not manage:
 - logs, screenshots, or live view
 - runtime status or standby state
 - force-release or recovery operations
-- API key, profile, proxy, or extension resources
-- extension upload, download, delete, or Chrome Store operations
+- API key, profile, proxy, or deployment resources
+- extension download or Chrome Web Store download operations
 
 ## Quickstart
 
@@ -83,6 +85,8 @@ use the project-qualified form to import from a different project:
 ```sh
 terraform import kernel_browser_pool.example <browser-pool-id>
 terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
+terraform import kernel_extension.example <extension-id>
+terraform import kernel_extension.example <project-id>/<extension-id>
 terraform import kernel_project.example <project-id>
 ```
 
@@ -151,12 +155,14 @@ Run the durable resource acceptance tests:
 
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
 ```
 
 The tests create uniquely named durable resources and register independent
-cleanup. Browser-pool deletion remains `force=false`. The tests do not acquire
-browsers or perform runtime recovery.
+cleanup. Extension acceptance creates a small temporary Manifest V3 archive and
+tests checksum-driven replacement. Browser-pool deletion remains `force=false`.
+The tests do not acquire browsers or perform runtime recovery.
 
 ## Architecture
 
