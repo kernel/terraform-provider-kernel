@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/kernel/terraform-provider-kernel/internal/acctest"
+	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
 
 const browserPoolAcceptanceResourceName = "kernel_browser_pool.data_source_test"
@@ -66,7 +67,7 @@ func testAccCheckBrowserPoolDataSourceDestroyed() resource.TestCheckFunc {
 			}
 
 			_, err := client.GetBrowserPool(ctx, resourceState.Primary.Attributes["project_id"], resourceState.Primary.ID)
-			if acctest.IsNotFound(err) {
+			if projectscope.IsNotFound(err) {
 				continue
 			}
 			if err != nil {
