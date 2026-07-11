@@ -145,6 +145,7 @@ func TestFlattenBrowserPoolUsesConfigNameWhenTopLevelNameNull(t *testing.T) {
 func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	pool := unmarshalBrowserPool(t, `{
 		"id": "pool-1",
+		"extension_ids": [],
 		"browser_pool_config": {
 			"size": 1
 		}
@@ -185,9 +186,10 @@ func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	}
 }
 
-func TestFlattenBrowserPoolPreservesExplicitEmptyConfigWhenAPIOmitsIt(t *testing.T) {
+func TestFlattenBrowserPoolPreservesExplicitEmptyConfigWhenResolvedIDsAreEmpty(t *testing.T) {
 	pool := unmarshalBrowserPool(t, `{
 		"id": "pool-1",
+		"extension_ids": [],
 		"browser_pool_config": {
 			"size": 1
 		}
