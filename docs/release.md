@@ -13,6 +13,11 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
+- Run `bash scripts/check-registry-manifest.sh`.
+- Run `goreleaser check`.
+- Run `bash scripts/check-release-snapshot.sh`. It builds every supported target,
+  checks each archive, and verifies checksum coverage. A snapshot skips signing
+  and is not a publishable release.
 - Run the complete [selected-surface acceptance matrix](acceptance.md) with real credentials against the release commit.
   - The manual `Acceptance` workflow runs all six packages as independent matrix jobs. Keep live tests out of normal pull-request CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
@@ -22,7 +27,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
     4. Read each canonical ID and require the expected not-found response before considering cleanup complete.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
-- Confirm the repository license before the first public release. Do not publish a public tag until `LICENSE` exists or the release owner has explicitly documented the licensing decision.
+- Confirm `LICENSE` contains the approved Apache License 2.0 text.
 - Confirm GitHub private vulnerability reporting or a public security contact is configured and reflected in `SECURITY.md`.
 - Confirm there is no branch named like the release tag, for example `v1.0.0`.
 
@@ -41,14 +46,25 @@ Each release must include:
 
 Do not replace or mutate assets for a published version. If an asset, checksum, signature, or manifest is wrong, cut a new version.
 
+## Supported Platforms
+
+| Operating system | Architectures |
+| --- | --- |
+| Darwin | `amd64`, `arm64` |
+| FreeBSD | `386`, `amd64`, `arm`, `arm64` |
+| Linux | `386`, `amd64`, `arm`, `arm64` |
+| Windows | `386`, `amd64`, `arm64` |
+
 ## GoReleaser Notes
 
-- Prefer a tag-triggered GitHub Actions release workflow once the signing key owner is decided.
-- Store the ASCII-armored private signing key as `GPG_PRIVATE_KEY` and its passphrase as `PASSPHRASE`.
-- Configure GoReleaser to build the provider from `./cmd/terraform-provider-kernel`.
-- Configure archives so each zip contains only the provider binary with the Terraform Registry binary name.
-- Configure signing for checksum artifacts. GoReleaser documents checksum signing as the usual path for archives and packages.
-- Run `goreleaser release --snapshot --clean` locally before enabling real tag releases.
+- `.goreleaser.yml` is the source of truth for registry artifact names, target
+  platforms, checksums, manifest inclusion, and checksum signing.
+- Normal CI validates the GoReleaser configuration and registry manifest without
+  building the complete platform matrix.
+- Run the unsigned snapshot as a release precondition.
+- Real releases sign the checksum file once with the GPG key selected by
+  `GPG_FINGERPRINT`. The detached signature is named by appending `.sig` to the
+  checksum filename. Register the matching public key in the Terraform Registry.
 
 ## Registry Setup
 
