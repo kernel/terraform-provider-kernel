@@ -45,7 +45,7 @@ operation. Secrets must remain GitHub Actions secrets and must not be printed.
 | `kernel_project` data source | Test present | A uniquely created project is read by canonical ID and exact name; the provider default resolves the configured project; metadata, no-drift planning, and post-destroy coded `not_found` are verified. | None. |
 | `kernel_extension` data source | Test present | A uniquely uploaded extension is read by canonical ID and exact name through explicit and provider-default project scope; metadata, no-drift planning, and post-destroy coded `not_found` are verified. | None. |
 | `kernel_profile` data source | Test present | A uniquely created durable profile is read by canonical ID and exact name through explicit and provider-default project scope; metadata, no-drift planning, and post-cleanup coded `not_found` are verified. | None. |
-| `kernel_proxy` data source | Test missing; tag blocker | Unit and fake-client tests only. | Add a durable, non-secret-leaking proxy fixture strategy and verify ID/name lookup, masked metadata, and cleanup. |
+| `kernel_proxy` data source | Test present | A uniquely created managed datacenter proxy is read by canonical ID and exact name through explicit and provider-default project scope; durable type/protocol metadata, no-drift planning, and post-cleanup coded `not_found` are verified without fixture credentials. | None. |
 | `kernel_app` data source | Fixture blocked; tag blocker | Unit, SDK transport, pagination, ambiguity, project-scope, and Framework state tests only. | Provide a release-owned running deployment fixture or a deterministic durable deployment setup. Verify exact app/version lookup without invocation and without exposing env values. |
 | `kernel_api_key` data source | Deferred; unregistered | No provider surface yet. | Wait for a tagged SDK with exact-name filtering, then add masked ID/name lookup acceptance. |
 | Profile, proxy, deployment, and API-key resources | Deferred; unregistered | No provider surfaces yet. | Enter the matrix only after their documented API/SDK/state blockers are resolved and implementation lands. |
@@ -55,7 +55,7 @@ against the release commit. The release record below supplies that evidence.
 
 ## Current Commands
 
-Run the seven existing packages independently for fast failure isolation:
+Run the eight existing packages independently for fast failure isolation:
 
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
@@ -64,6 +64,7 @@ go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/profile -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/browserpool -run TestAcc
 ```
 
