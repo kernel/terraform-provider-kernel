@@ -73,6 +73,11 @@ data "kernel_app" "selected" {
   project_id = data.kernel_project.selected.id
 }
 
+data "kernel_deployment" "selected" {
+  id         = data.kernel_app.selected.deployment_id
+  project_id = data.kernel_project.selected.id
+}
+
 output "kernel_ids" {
   value = {
     project_id      = data.kernel_project.selected.id
@@ -81,6 +86,6 @@ output "kernel_ids" {
     proxy_id        = data.kernel_proxy.selected.id
     extension_id    = data.kernel_extension.selected.id
     app_id          = data.kernel_app.selected.id
-    deployment_id   = data.kernel_app.selected.deployment_id
+    deployment_id   = data.kernel_deployment.selected.id
   }
 }

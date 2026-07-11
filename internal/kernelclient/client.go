@@ -40,6 +40,7 @@ type Clients struct {
 	profiles         kernel.ProfileService
 	proxies          kernel.ProxyService
 	apps             kernel.AppService
+	deployments      kernel.DeploymentService
 	extensions       kernel.ExtensionService
 	browserPools     kernel.BrowserPoolService
 }
@@ -70,6 +71,7 @@ func New(config Config, opts ...Option) Clients {
 		profiles:         kernel.NewProfileService(requestOpts...),
 		proxies:          kernel.NewProxyService(requestOpts...),
 		apps:             kernel.NewAppService(requestOpts...),
+		deployments:      kernel.NewDeploymentService(requestOpts...),
 		extensions:       kernel.NewExtensionService(requestOpts...),
 		browserPools:     kernel.NewBrowserPoolService(requestOpts...),
 	}
@@ -170,6 +172,10 @@ func (c Clients) ListAppPage(ctx context.Context, projectID, appName, version st
 		NextOffset:  next,
 		HasNextPage: ok,
 	}, nil
+}
+
+func (c Clients) GetDeployment(ctx context.Context, projectID, id string) (*kernel.DeploymentGetResponse, error) {
+	return c.deployments.Get(ctx, id, scope(projectID)...)
 }
 
 func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*kernel.Profile, error) {

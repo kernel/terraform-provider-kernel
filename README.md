@@ -22,6 +22,7 @@ Data sources:
 
 - `kernel_app`
 - `kernel_browser_pool`
+- `kernel_deployment`
 - `kernel_project`
 - `kernel_profile`
 - `kernel_proxy`

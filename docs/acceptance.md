@@ -49,6 +49,7 @@ Actions secrets and must not be printed.
 | `kernel_profile` data source | Test present | A uniquely created durable profile is read by canonical ID and exact name through explicit and provider-default project scope; metadata, no-drift planning, and post-cleanup coded `not_found` are verified. | None. |
 | `kernel_proxy` data source | Test present | A uniquely created managed datacenter proxy is read by canonical ID and exact name through explicit and provider-default project scope; durable type/protocol metadata, no-drift planning, and post-cleanup coded `not_found` are verified without fixture credentials. | None. |
 | `kernel_app` data source | Test present | A release-owned running app version is read by exact name/version through explicit and provider-default project scope; canonical deployment metadata and no-drift planning are verified without invocation. Unit coverage verifies action-name and environment-key flattening without environment values. | Keep `KERNEL_ACC_APP_NAME` and `KERNEL_ACC_APP_VERSION` pointed at exactly one running app version in the acceptance project. |
+| `kernel_deployment` data source | Test present | The deployment backing the release-owned app fixture is read by canonical ID through explicit and provider-default project scope; direct GET metadata and no-drift planning are verified without logs or event streams. Unit coverage verifies that only environment variable names enter state. | Keep the release-owned app fixture running so its deployment ID remains readable. |
 | `kernel_api_key` data source | Deferred; unregistered | No provider surface yet. | Wait for a tagged SDK with exact-name filtering, then add masked ID/name lookup acceptance. |
 | Profile, proxy, deployment, and API-key resources | Deferred; unregistered | No provider surfaces yet. | Enter the matrix only after their documented API/SDK/state blockers are resolved and implementation lands. |
 
@@ -57,7 +58,7 @@ against the release commit. The release record below supplies that evidence.
 
 ## Current Commands
 
-Run the nine existing packages independently for fast failure isolation:
+Run the ten existing packages independently for fast failure isolation:
 
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
@@ -68,6 +69,7 @@ go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/profile -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/app -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/datasources/deployment -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/browserpool -run TestAcc
 ```
 
