@@ -201,6 +201,48 @@ func cleanupExtension(t testing.TB, client extensionCleaner, projectID, id strin
 	})
 }
 
+// CleanupProfile registers a cleanup that deletes the profile from projectID;
+// empty means the env-configured default project.
+func CleanupProfile(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupProfile(t, ClientFromEnv(), projectID, id)
+}
+
+type profileCleaner interface {
+	DefaultProjectID() string
+	DeleteProfile(context.Context, string, string) error
+}
+
+func cleanupProfile(t testing.TB, client profileCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteProfile(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel profile %s: %v", id, err)
+		}
+	})
+}
+
 func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),
