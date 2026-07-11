@@ -23,6 +23,7 @@ Lookup durable Kernel browser pool configuration.
 
 ### Read-Only
 
+- `chrome_policy` (String) Normalized JSON object of Chrome enterprise policy overrides, if configured.
 - `extension_ids` (List of String) Resolved extension IDs attached to the pool, in load order.
 - `fill_rate_per_minute` (Number) Percentage of the pool filled per minute.
 - `headless` (Boolean) Whether browsers use a headless image.

@@ -1,10 +1,12 @@
 package browserpool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -55,6 +57,7 @@ type browserPoolModel struct {
 	TimeoutSeconds    types.Int64  `tfsdk:"timeout_seconds"`
 	FillRatePerMinute types.Int64  `tfsdk:"fill_rate_per_minute"`
 	Viewport          types.Object `tfsdk:"viewport"`
+	ChromePolicy      types.String `tfsdk:"chrome_policy"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -139,6 +142,10 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 					"height":       dschema.Int64Attribute{Computed: true, MarkdownDescription: "Browser window height in pixels."},
 					"refresh_rate": dschema.Int64Attribute{Computed: true, MarkdownDescription: "Display refresh rate in Hz, if configured."},
 				},
+			},
+			"chrome_policy": dschema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Normalized JSON object of Chrome enterprise policy overrides, if configured.",
 			},
 		},
 	}
@@ -281,6 +288,7 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 		TimeoutSeconds:    flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
 		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
 		Viewport:          flattenViewport(config.JSON.Viewport.Raw(), config.JSON.Viewport.Valid(), config.Viewport, &diags),
+		ChromePolicy:      flattenChromePolicy(config.JSON.ChromePolicy.Raw(), config.JSON.ChromePolicy.Valid(), &diags),
 	}, diags
 }
 
@@ -382,6 +390,31 @@ func viewportAttributeTypes() map[string]attr.Type {
 		"height":       types.Int64Type,
 		"refresh_rate": types.Int64Type,
 	}
+}
+
+func flattenChromePolicy(raw string, valid bool, diags *diag.Diagnostics) types.String {
+	if raw == "" || !datasources.FieldPresent(raw) {
+		return types.StringNull()
+	}
+	if !valid {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.chrome_policy")
+		return types.StringNull()
+	}
+
+	var policy map[string]any
+	if err := json.Unmarshal([]byte(raw), &policy); err != nil || policy == nil {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.chrome_policy")
+		return types.StringNull()
+	}
+
+	var normalized bytes.Buffer
+	encoder := json.NewEncoder(&normalized)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(policy); err != nil {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.chrome_policy")
+		return types.StringNull()
+	}
+	return types.StringValue(strings.TrimSuffix(normalized.String(), "\n"))
 }
 
 func flattenResolvedProfileID(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {
