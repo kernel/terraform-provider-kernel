@@ -45,7 +45,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute", "viewport"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -146,7 +146,8 @@ func TestReadSetsTerraformState(t *testing.T) {
 					"stealth":true,
 					"start_url":"chrome://newtab",
 					"timeout_seconds":10,
-					"fill_rate_per_minute":0
+					"fill_rate_per_minute":0,
+					"viewport":{"width":1280,"height":800,"refresh_rate":60}
 				}
 			}`), nil
 		},
@@ -185,6 +186,51 @@ func TestReadSetsTerraformState(t *testing.T) {
 	}
 	if state.StartURL.ValueString() != "chrome://newtab" || state.TimeoutSeconds.ValueInt64() != 10 || state.FillRatePerMinute.IsNull() || state.FillRatePerMinute.IsUnknown() || state.FillRatePerMinute.ValueInt64() != 0 {
 		t.Fatalf("warmup state = %#v", state)
+	}
+	assertBrowserPoolViewport(t, state.Viewport, 1280, 800, types.Int64Value(60))
+}
+
+func TestFlattenBrowserPoolViewportOptionalFields(t *testing.T) {
+	t.Parallel()
+
+	omitted, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected omitted viewport diagnostics: %v", diags)
+	}
+	if !omitted.Viewport.IsNull() || len(omitted.Viewport.AttributeTypes(t.Context())) != 3 {
+		t.Fatalf("omitted viewport = %#v, want typed null", omitted.Viewport)
+	}
+
+	withoutRefreshRate, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1280,"height":800}}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected viewport diagnostics: %v", diags)
+	}
+	assertBrowserPoolViewport(t, withoutRefreshRate.Viewport, 1280, 800, types.Int64Null())
+}
+
+func TestFlattenBrowserPoolRejectsInvalidViewport(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"null viewport":        `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":null}}`,
+		"non-object viewport":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":[]}}`,
+		"missing width":        `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"height":800}}}`,
+		"missing height":       `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1280}}}`,
+		"zero width":           `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":0,"height":800}}}`,
+		"negative height":      `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1280,"height":-1}}}`,
+		"null refresh rate":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1280,"height":800,"refresh_rate":null}}}`,
+		"zero refresh rate":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1280,"height":800,"refresh_rate":0}}}`,
+		"non-number dimension": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":"1280","height":800}}}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, diags := flattenBrowserPool(*browserPoolFromJSON(body))
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics")
+			}
+		})
 	}
 }
 
@@ -473,6 +519,11 @@ func browserPoolFromJSON(body string) *kernel.BrowserPool {
 }
 
 func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
+	viewportType := tftypes.Object{AttributeTypes: map[string]tftypes.Type{
+		"width":        tftypes.Number,
+		"height":       tftypes.Number,
+		"refresh_rate": tftypes.Number,
+	}}
 	return tftypes.NewValue(
 		tftypes.Object{AttributeTypes: map[string]tftypes.Type{
 			"id":                   tftypes.String,
@@ -488,6 +539,7 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"start_url":            tftypes.String,
 			"timeout_seconds":      tftypes.Number,
 			"fill_rate_per_minute": tftypes.Number,
+			"viewport":             viewportType,
 		}},
 		map[string]tftypes.Value{
 			"id":                   id,
@@ -503,8 +555,20 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"start_url":            tftypes.NewValue(tftypes.String, nil),
 			"timeout_seconds":      tftypes.NewValue(tftypes.Number, nil),
 			"fill_rate_per_minute": tftypes.NewValue(tftypes.Number, nil),
+			"viewport":             tftypes.NewValue(viewportType, nil),
 		},
 	)
+}
+
+func assertBrowserPoolViewport(t *testing.T, viewport types.Object, width, height int64, refreshRate types.Int64) {
+	t.Helper()
+	if viewport.IsNull() || viewport.IsUnknown() {
+		t.Fatalf("viewport = %#v, want known object", viewport)
+	}
+	attributes := viewport.Attributes()
+	if !attributes["width"].(types.Int64).Equal(types.Int64Value(width)) || !attributes["height"].(types.Int64).Equal(types.Int64Value(height)) || !attributes["refresh_rate"].(types.Int64).Equal(refreshRate) {
+		t.Fatalf("viewport = %#v, want %dx%d refresh %v", viewport, width, height, refreshRate)
+	}
 }
 
 func assertBrowserPoolStringList(t *testing.T, got types.List, want []string) {
