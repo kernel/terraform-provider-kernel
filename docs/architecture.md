@@ -213,11 +213,14 @@ reserved CUID-like form `^[a-z0-9]{24}$`. The provider rejects surrounding
 whitespace instead of relying on the upload endpoint to trim it and returning
 state different from configuration.
 
-Kernel exposes no extension update endpoint. Changes to `name`, `project_id`,
-or `source_sha256` therefore replace the extension. A replacement plan also
-requires `source_path`, since the provider must upload the new durable object.
-Changing only the local path has no remote meaning and cannot itself trigger a
-replacement.
+Kernel exposes no extension update endpoint. Changes between known configured
+values of `name`, `project_id`, or `source_sha256` therefore replace the
+extension. Because `name` is `Optional + Computed` for stable import, omitting
+it preserves the remote name and relinquishes name management; the provider
+cannot use that same omission to request replacement with an unnamed extension.
+Clearing a name is unsupported. A replacement plan also requires `source_path`,
+since the provider must upload the new durable object. Changing only the local
+path has no remote meaning and cannot itself trigger a replacement.
 
 Read uses the metadata endpoint and never downloads archive bytes. It excludes
 `last_used_at` because runtime browser activity changes that field, and omits
