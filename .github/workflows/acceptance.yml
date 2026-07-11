@@ -11,22 +11,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  browser-pool:
-    name: Browser pool acceptance
+  durable-resource:
+    name: ${{ matrix.name }} acceptance
     runs-on: ubuntu-latest
-    # Keep the job timeout above the go test -timeout below: the job budget
-    # also covers checkout/toolchain setup, and if it fires first it kills the
-    # test process before t.Cleanup can delete the pools it created.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Browser pool
+            package: ./internal/resources/browserpool
+            project_id_required: true
+          - name: Project
+            package: ./internal/resources/project
+            project_id_required: false
+    # Keep the job timeout above the go test timeout so Go can report the test
+    # timeout before the runner stops the job. Either hard timeout can bypass
+    # t.Cleanup, so release operators still inspect for leaked test resources.
     timeout-minutes: 40
     env:
       TF_ACC: "1"
       KERNEL_ACC: "1"
-      KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
-      KERNEL_PROJECT_ID: ${{ secrets.KERNEL_PROJECT_ID }}
-      KERNEL_ALT_PROJECT_ID: ${{ secrets.KERNEL_ALT_PROJECT_ID }}
-      KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
 
     steps:
+      - name: Check API key secret
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          : "${KERNEL_API_KEY:?Set the KERNEL_API_KEY repository secret before running acceptance tests.}"
+
+      - name: Check project secret
+        if: matrix.project_id_required
+        env:
+          KERNEL_PROJECT_ID: ${{ secrets.KERNEL_PROJECT_ID }}
+        run: |
+          : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running browser-pool acceptance tests.}"
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -42,10 +61,10 @@ jobs:
           terraform_version: "1.15.5"
           terraform_wrapper: false
 
-      - name: Check required secrets
-        run: |
-          : "${KERNEL_API_KEY:?Set the KERNEL_API_KEY repository secret before running acceptance tests.}"
-          : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running acceptance tests.}"
-
-      - name: Run browser pool acceptance tests
-        run: go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
+      - name: Run acceptance tests
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
+          KERNEL_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_PROJECT_ID || '' }}
+          KERNEL_ALT_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_ALT_PROJECT_ID || '' }}
+        run: go test -count=1 -timeout=30m -v ${{ matrix.package }} -run TestAcc
