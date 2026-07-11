@@ -36,6 +36,9 @@ jobs:
           - name: Extension data source
             package: ./internal/datasources/extension
             project_id_required: true
+          - name: Profile data source
+            package: ./internal/datasources/profile
+            project_id_required: true
     # Keep the job timeout above the go test timeout so Go can report the test
     # timeout before the runner stops the job. Either hard timeout can bypass
     # t.Cleanup, so release operators still inspect for leaked test resources.
