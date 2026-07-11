@@ -1,13 +1,9 @@
 package extension_test
 
 import (
-	"archive/zip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,8 +16,8 @@ const extensionResourceName = "kernel_extension.test"
 
 func TestAccExtensionLifecycle(t *testing.T) {
 	name := acctest.UniqueName(t, "extension")
-	firstPath, firstChecksum := testAccWriteExtensionArchive(t, "first")
-	secondPath, secondChecksum := testAccWriteExtensionArchive(t, "second")
+	firstPath, firstChecksum := acctest.ExtensionArchive(t, "first")
+	secondPath, secondChecksum := acctest.ExtensionArchive(t, "second")
 	firstConfig := testAccExtensionConfig(name, firstPath)
 	secondConfig := testAccExtensionConfig(name, secondPath)
 	var firstID, secondID string
@@ -86,46 +82,6 @@ resource "kernel_extension" "test" {
   source_sha256 = filesha256(%q)
 }
 `, name, sourcePath, sourcePath)
-}
-
-func testAccWriteExtensionArchive(t *testing.T, marker string) (string, string) {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "extension.zip")
-	file, err := os.Create(path)
-	if err != nil {
-		t.Fatalf("create extension archive: %v", err)
-	}
-	defer file.Close()
-
-	writer := zip.NewWriter(file)
-	testAccWriteZipFile(t, writer, "manifest.json", `{"manifest_version":3,"name":"Kernel Terraform acceptance","version":"1.0.0"}`)
-	testAccWriteZipFile(t, writer, "marker.txt", marker)
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close extension ZIP: %v", err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatalf("close extension archive: %v", err)
-	}
-
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read extension archive: %v", err)
-	}
-	checksum := sha256.Sum256(contents)
-	return path, hex.EncodeToString(checksum[:])
-}
-
-func testAccWriteZipFile(t *testing.T, writer *zip.Writer, name, contents string) {
-	t.Helper()
-
-	entry, err := writer.Create(name)
-	if err != nil {
-		t.Fatalf("create %s in extension ZIP: %v", name, err)
-	}
-	if _, err := entry.Write([]byte(contents)); err != nil {
-		t.Fatalf("write %s in extension ZIP: %v", name, err)
-	}
 }
 
 func testAccCaptureExtensionID(t *testing.T, resourceName string, extensionID *string) resource.TestCheckFunc {
