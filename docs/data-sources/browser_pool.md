@@ -24,9 +24,12 @@ Lookup durable Kernel browser pool configuration.
 ### Read-Only
 
 - `extension_ids` (List of String) Resolved extension IDs attached to the pool, in load order.
+- `fill_rate_per_minute` (Number) Percentage of the pool filled per minute.
 - `headless` (Boolean) Whether browsers use a headless image.
 - `kiosk_mode` (Boolean) Whether browsers launch in kiosk mode.
 - `profile_id` (String) Resolved profile ID attached to the pool, if any.
 - `proxy_id` (String) Proxy ID attached to browsers in the pool, if any.
 - `size` (Number) Number of browsers maintained in the pool.
+- `start_url` (String) URL opened when a browser is warmed into the pool, if configured.
 - `stealth` (Boolean) Whether browsers launch in stealth mode.
+- `timeout_seconds` (Number) Default idle timeout in seconds for acquired browsers.
