@@ -17,6 +17,14 @@ type fakeBrowserPoolCleaner struct {
 	delete           func(context.Context, string, string) error
 }
 
+type fakeProjectCleaner struct {
+	delete func(context.Context, string) error
+}
+
+func (f fakeProjectCleaner) DeleteProject(ctx context.Context, id string) error {
+	return f.delete(ctx, id)
+}
+
 func (f fakeBrowserPoolCleaner) DefaultProjectID() string {
 	return f.defaultProjectID
 }
@@ -243,6 +251,86 @@ func TestCleanupBrowserPoolSurfacesRealDeleteErrors(t *testing.T) {
 			recorder.cleanups[0]()
 			if !recorder.failed {
 				t.Fatal("cleanup swallowed a non-404 delete error")
+			}
+		})
+	}
+}
+
+func TestCleanupProject(t *testing.T) {
+	tests := map[string]struct {
+		acceptance   string
+		apiKey       string
+		id           string
+		deleteErr    error
+		wantCleanups int
+		wantDelete   bool
+		wantFailure  bool
+	}{
+		"empty ID is ignored": {},
+		"acceptance disabled": {
+			apiKey:      "test-key",
+			id:          "project_123",
+			wantFailure: true,
+		},
+		"API key missing": {
+			acceptance:  "1",
+			id:          "project_123",
+			wantFailure: true,
+		},
+		"not found is already clean": {
+			acceptance:   "1",
+			apiKey:       "test-key",
+			id:           "project_123",
+			deleteErr:    notFoundAPIError(),
+			wantCleanups: 1,
+			wantDelete:   true,
+		},
+		"delete error is reported": {
+			acceptance:   "1",
+			apiKey:       "test-key",
+			id:           "project_123",
+			deleteErr:    errors.New("connection reset"),
+			wantCleanups: 1,
+			wantDelete:   true,
+			wantFailure:  true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(EnvAcceptance, test.acceptance)
+			t.Setenv(EnvAPIKey, test.apiKey)
+
+			var gotID string
+			deleteCalled := false
+			deadlineSet := false
+			recorder := &testRecorder{TB: t}
+			cleanupProject(recorder, fakeProjectCleaner{
+				delete: func(ctx context.Context, id string) error {
+					deleteCalled = true
+					_, deadlineSet = ctx.Deadline()
+					gotID = id
+					return test.deleteErr
+				},
+			}, test.id)
+
+			if got, want := len(recorder.cleanups), test.wantCleanups; got != want {
+				t.Fatalf("cleanupProject registered %d cleanups, want %d", got, want)
+			}
+			if test.wantCleanups == 1 {
+				recorder.cleanups[0]()
+			}
+			if recorder.failed != test.wantFailure {
+				t.Fatalf("cleanupProject failure = %t, want %t", recorder.failed, test.wantFailure)
+			}
+			if deleteCalled != test.wantDelete {
+				t.Fatalf("cleanupProject called delete = %t, want %t", deleteCalled, test.wantDelete)
+			}
+			if deleteCalled && !deadlineSet {
+				t.Fatal("cleanupProject called delete without a context deadline")
+			}
+			if test.wantDelete && gotID != test.id {
+				t.Fatalf("cleanup id = %q, want %q", gotID, test.id)
 			}
 		})
 	}
