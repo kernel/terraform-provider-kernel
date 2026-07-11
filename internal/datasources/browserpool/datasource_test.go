@@ -45,7 +45,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -162,6 +162,96 @@ func TestReadSetsTerraformState(t *testing.T) {
 	if state.ID.ValueString() != "pool-1" || state.Name.ValueString() != "Pool" || state.Size.ValueInt64() != 2 {
 		t.Fatalf("state = %#v", state)
 	}
+	if !state.ProfileID.IsNull() {
+		t.Fatalf("profile_id = %v, want null", state.ProfileID)
+	}
+	assertBrowserPoolStringList(t, state.ExtensionIDs, nil)
+}
+
+func TestFlattenBrowserPoolResolvedReferences(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		body             string
+		wantProfileID    string
+		wantProfileNull  bool
+		wantExtensionIDs []string
+	}{
+		"authoritative fields": {
+			body: `{
+				"id":"pool-1",
+				"profile_id":"profile-resolved",
+				"extension_ids":["extension-b","extension-a"],
+				"browser_pool_config":{
+					"size":1,
+					"profile":{"name":"profile-selector"},
+					"extensions":[{"name":"extension-selector-b"},{"name":"extension-selector-a"}]
+				}
+			}`,
+			wantProfileID:    "profile-resolved",
+			wantExtensionIDs: []string{"extension-b", "extension-a"},
+		},
+		"legacy ID selectors": {
+			body: `{
+				"id":"pool-1",
+				"browser_pool_config":{
+					"size":1,
+					"profile":{"id":"profile-legacy"},
+					"extensions":[{"id":"extension-b"},{"id":"extension-a"}]
+				}
+			}`,
+			wantProfileID:    "profile-legacy",
+			wantExtensionIDs: []string{"extension-b", "extension-a"},
+		},
+		"no references": {
+			body:             `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1}}`,
+			wantProfileNull:  true,
+			wantExtensionIDs: nil,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			state, diags := flattenBrowserPool(*browserPoolFromJSON(test.body))
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
+			}
+			if test.wantProfileNull {
+				if !state.ProfileID.IsNull() {
+					t.Fatalf("profile_id = %v, want null", state.ProfileID)
+				}
+			} else if state.ProfileID.ValueString() != test.wantProfileID {
+				t.Fatalf("profile_id = %q, want %q", state.ProfileID.ValueString(), test.wantProfileID)
+			}
+			assertBrowserPoolStringList(t, state.ExtensionIDs, test.wantExtensionIDs)
+		})
+	}
+}
+
+func TestFlattenBrowserPoolRejectsInvalidResolvedReferences(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"null authoritative extensions":       `{"id":"pool-1","extension_ids":null,"browser_pool_config":{"size":1}}`,
+		"non-list authoritative extensions":   `{"id":"pool-1","extension_ids":{},"browser_pool_config":{"size":1}}`,
+		"empty authoritative extension ID":    `{"id":"pool-1","extension_ids":[""],"browser_pool_config":{"size":1}}`,
+		"null authoritative profile ID":       `{"id":"pool-1","profile_id":null,"extension_ids":[],"browser_pool_config":{"size":1}}`,
+		"non-string authoritative profile ID": `{"id":"pool-1","profile_id":1,"extension_ids":[],"browser_pool_config":{"size":1}}`,
+		"empty authoritative profile ID":      `{"id":"pool-1","profile_id":"","extension_ids":[],"browser_pool_config":{"size":1}}`,
+		"legacy profile name only":            `{"id":"pool-1","browser_pool_config":{"size":1,"profile":{"name":"profile-selector"}}}`,
+		"legacy extension name only":          `{"id":"pool-1","browser_pool_config":{"size":1,"extensions":[{"name":"extension-selector"}]}}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, diags := flattenBrowserPool(*browserPoolFromJSON(body))
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics")
+			}
+		})
+	}
 }
 
 func TestReadBrowserPoolAllowsUnnamedPoolByID(t *testing.T) {
@@ -247,7 +337,7 @@ func browserPoolForTest(id, name string, size int64) *kernel.BrowserPool {
 		nameJSON = strconv.Quote(name)
 		configName = `,"name":` + strconv.Quote(name)
 	}
-	return browserPoolFromJSON(`{"id":` + strconv.Quote(id) + `,"name":` + nameJSON + `,"browser_pool_config":{"size":` + strconv.FormatInt(size, 10) + configName + `}}`)
+	return browserPoolFromJSON(`{"id":` + strconv.Quote(id) + `,"name":` + nameJSON + `,"extension_ids":[],"browser_pool_config":{"size":` + strconv.FormatInt(size, 10) + configName + `}}`)
 }
 
 func browserPoolFromJSON(body string) *kernel.BrowserPool {
@@ -261,16 +351,37 @@ func browserPoolFromJSON(body string) *kernel.BrowserPool {
 func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 	return tftypes.NewValue(
 		tftypes.Object{AttributeTypes: map[string]tftypes.Type{
-			"id":         tftypes.String,
-			"name":       tftypes.String,
-			"project_id": tftypes.String,
-			"size":       tftypes.Number,
+			"id":            tftypes.String,
+			"name":          tftypes.String,
+			"project_id":    tftypes.String,
+			"size":          tftypes.Number,
+			"profile_id":    tftypes.String,
+			"extension_ids": tftypes.List{ElementType: tftypes.String},
 		}},
 		map[string]tftypes.Value{
-			"id":         id,
-			"name":       name,
-			"project_id": projectID,
-			"size":       tftypes.NewValue(tftypes.Number, nil),
+			"id":            id,
+			"name":          name,
+			"project_id":    projectID,
+			"size":          tftypes.NewValue(tftypes.Number, nil),
+			"profile_id":    tftypes.NewValue(tftypes.String, nil),
+			"extension_ids": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		},
 	)
+}
+
+func assertBrowserPoolStringList(t *testing.T, got types.List, want []string) {
+	t.Helper()
+	if got.IsNull() || got.IsUnknown() {
+		t.Fatalf("list = %v, want %v", got, want)
+	}
+	elements := got.Elements()
+	if len(elements) != len(want) {
+		t.Fatalf("list length = %d, want %d", len(elements), len(want))
+	}
+	for index, element := range elements {
+		value, ok := element.(types.String)
+		if !ok || value.ValueString() != want[index] {
+			t.Fatalf("list[%d] = %v, want %q", index, element, want[index])
+		}
+	}
 }

@@ -23,4 +23,6 @@ Lookup durable Kernel browser pool configuration.
 
 ### Read-Only
 
+- `extension_ids` (List of String) Resolved extension IDs attached to the pool, in load order.
+- `profile_id` (String) Resolved profile ID attached to the pool, if any.
 - `size` (Number) Number of browsers maintained in the pool.
