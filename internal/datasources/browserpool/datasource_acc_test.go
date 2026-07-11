@@ -1,9 +1,11 @@
 package browserpool_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -29,6 +31,7 @@ func TestAccBrowserPoolDataSourceByIDAndName(t *testing.T) {
 			}
 		},
 		ProtoV6ProviderFactories: acctest.ProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckBrowserPoolDataSourceDestroyed(),
 		Steps: []resource.TestStep{
 			{
 				Config: config,
@@ -49,6 +52,30 @@ func TestAccBrowserPoolDataSourceByIDAndName(t *testing.T) {
 			},
 		},
 	})
+}
+
+func testAccCheckBrowserPoolDataSourceDestroyed() resource.TestCheckFunc {
+	return func(state *terraform.State) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		client := acctest.ClientFromEnv()
+		for _, resourceState := range state.RootModule().Resources {
+			if resourceState.Type != "kernel_browser_pool" || resourceState.Primary == nil || resourceState.Primary.ID == "" {
+				continue
+			}
+
+			_, err := client.GetBrowserPool(ctx, resourceState.Primary.Attributes["project_id"], resourceState.Primary.ID)
+			if acctest.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("read Kernel browser pool %s after destroy: %w", resourceState.Primary.ID, err)
+			}
+			return fmt.Errorf("Kernel browser pool %s still exists after destroy", resourceState.Primary.ID)
+		}
+		return nil
+	}
 }
 
 func testAccBrowserPoolDataSourceConfig(name, projectID string) string {
