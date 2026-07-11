@@ -27,6 +27,9 @@ jobs:
           - name: Project
             package: ./internal/resources/project
             project_id_required: false
+          - name: Project data source
+            package: ./internal/datasources/project
+            project_id_required: true
           - name: Extension
             package: ./internal/resources/extension
             project_id_required: true

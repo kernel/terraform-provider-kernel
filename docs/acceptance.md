@@ -42,7 +42,7 @@ operation. Secrets must remain GitHub Actions secrets and must not be printed.
 | `kernel_browser_pool` resource | Test present | Create, durable update with stable ID, no-drift plan, bare and project-qualified import paths, explicit project scope, non-force delete, and 404 verification. | Keep leased-browser conflict behavior in unit tests; acceptance must not create runtime leases. |
 | `kernel_extension` resource | Test present | Upload, checksum state, no-drift plan, metadata-only import, content replacement with new ID, old-ID disappearance, delete, and 404 verification. | Add project-qualified import to live coverage before the v1 tag. |
 | `kernel_browser_pool` data source | Test present | A uniquely created pool is read by canonical ID and byte-exact name, including normalized durable configuration, a no-drift plan, and post-destroy coded `not_found` verification. | None. |
-| `kernel_project` data source | Test missing; tag blocker | Unit and fake-client tests only. | Use a uniquely created `kernel_project` fixture and verify current/ID/name lookup plus no drift. |
+| `kernel_project` data source | Test present | A uniquely created project is read by canonical ID and exact name; the provider default resolves the configured project; metadata, no-drift planning, and post-destroy coded `not_found` are verified. | None. |
 | `kernel_extension` data source | Test missing; tag blocker | Unit and fake-client tests only. | Use a uniquely uploaded `kernel_extension` fixture and verify ID/name metadata lookup plus no drift. |
 | `kernel_profile` data source | Test missing; tag blocker | Unit and fake-client tests only. | Add durable SDK fixture create/delete helpers, then verify ID/name lookup and cleanup. Do not model runtime-written profile contents. |
 | `kernel_proxy` data source | Test missing; tag blocker | Unit and fake-client tests only. | Add a durable, non-secret-leaking proxy fixture strategy and verify ID/name lookup, masked metadata, and cleanup. |
@@ -55,10 +55,11 @@ against the release commit. The release record below supplies that evidence.
 
 ## Current Commands
 
-Run the four existing packages independently for fast failure isolation:
+Run the five existing packages independently for fast failure isolation:
 
 ```sh
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/datasources/project -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/extension -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/browserpool -run TestAcc
