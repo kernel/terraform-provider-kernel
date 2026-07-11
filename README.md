@@ -20,6 +20,7 @@ Resources:
 
 Data sources:
 
+- `kernel_app`
 - `kernel_project`
 - `kernel_profile`
 - `kernel_proxy`
