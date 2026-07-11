@@ -297,25 +297,55 @@ func TestClientsDoNotReadSDKEnvironmentDefaults(t *testing.T) {
 	}
 }
 
-func TestBrowserPoolMutationsDisableSDKRetries(t *testing.T) {
+func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		method string
-		path   string
-		call   func(context.Context, Clients) error
+		method    string
+		path      string
+		projectID string
+		call      func(context.Context, Clients) error
 	}{
-		"create": {
+		"project create": {
 			method: http.MethodPost,
-			path:   "/browser_pools",
+			path:   "/org/projects",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateProject(ctx, kernel.ProjectNewParams{
+					CreateProjectRequest: kernel.CreateProjectRequestParam{Name: "Project"},
+				})
+				return err
+			},
+		},
+		"project update": {
+			method: http.MethodPatch,
+			path:   "/org/projects/project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.UpdateProject(ctx, "project_123", kernel.ProjectUpdateParams{
+					UpdateProjectRequest: kernel.UpdateProjectRequestParam{Name: kernel.String("Renamed")},
+				})
+				return err
+			},
+		},
+		"project delete": {
+			method: http.MethodDelete,
+			path:   "/org/projects/project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteProject(ctx, "project_123")
+			},
+		},
+		"browser pool create": {
+			method:    http.MethodPost,
+			path:      "/browser_pools",
+			projectID: "project_123",
 			call: func(ctx context.Context, clients Clients) error {
 				_, err := clients.CreateBrowserPool(ctx, "project_123", kernel.BrowserPoolNewParams{Size: 1})
 				return err
 			},
 		},
-		"update": {
-			method: http.MethodPatch,
-			path:   "/browser_pools/pool_123",
+		"browser pool update": {
+			method:    http.MethodPatch,
+			path:      "/browser_pools/pool_123",
+			projectID: "project_123",
 			call: func(ctx context.Context, clients Clients) error {
 				_, err := clients.UpdateBrowserPool(ctx, "project_123", "pool_123", kernel.BrowserPoolUpdateParams{
 					Size: kernel.Int(2),
@@ -323,9 +353,10 @@ func TestBrowserPoolMutationsDisableSDKRetries(t *testing.T) {
 				return err
 			},
 		},
-		"delete": {
-			method: http.MethodDelete,
-			path:   "/browser_pools/pool_123",
+		"browser pool delete": {
+			method:    http.MethodDelete,
+			path:      "/browser_pools/pool_123",
+			projectID: "project_123",
 			call: func(ctx context.Context, clients Clients) error {
 				return clients.DeleteBrowserPool(ctx, "project_123", "pool_123")
 			},
@@ -338,8 +369,9 @@ func TestBrowserPoolMutationsDisableSDKRetries(t *testing.T) {
 
 			var requests []capturedRequest
 			clients := New(Config{
-				APIKey:  "test-api-key",
-				BaseURL: "https://api.example",
+				APIKey:    "test-api-key",
+				BaseURL:   "https://api.example",
+				ProjectID: "default_project",
 			}, WithHTTPClient(recordingHTTPClientWithStatus(&requests, http.StatusInternalServerError, func(req *http.Request) string {
 				if req.Method != test.method {
 					t.Fatalf("method = %s, want %s", req.Method, test.method)
@@ -360,7 +392,7 @@ func TestBrowserPoolMutationsDisableSDKRetries(t *testing.T) {
 			if got, want := requests[0].RetryCount, "0"; got != want {
 				t.Fatalf("retry count header = %q, want %q", got, want)
 			}
-			if got, want := requests[0].ProjectID, "project_123"; got != want {
+			if got, want := requests[0].ProjectID, test.projectID; got != want {
 				t.Fatalf("project header = %q, want %q", got, want)
 			}
 		})
