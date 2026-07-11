@@ -346,20 +346,18 @@ Prefer PRs that add one durable behavior at a time, with tests that prove the ne
 
 ## Review Gates
 
-Every PR loop has six sequential gates:
+Every PR loop has four sequential gates:
 
 1. `deslop`
 2. incremental self-review
 3. `autoreview`
-4. `dave-cheney-go-review`
-5. `eblog-code-review`
-6. final agreement pass
+4. final agreement pass
 
 Loop:
 
 1. Implement the PR scope.
 2. Run gofmt, go test, go vet, and relevant Terraform validation.
-3. Run all six review gates in order.
+3. Run all four review gates in order.
 4. Fix every accepted and actionable finding.
 5. Rerun tests.
 6. Rerun the affected review gates.

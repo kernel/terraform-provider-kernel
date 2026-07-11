@@ -21,6 +21,7 @@ Resources:
 Data sources:
 
 - `kernel_app`
+- `kernel_browser_pool`
 - `kernel_project`
 - `kernel_profile`
 - `kernel_proxy`
@@ -164,3 +165,5 @@ single source for current coverage, tag blockers, and the release-run record.
 
 See [docs/architecture.md](docs/architecture.md) for package layout, Terraform semantics, testing strategy, and release planning.
 
+
+See [docs/migration-v1.md](docs/migration-v1.md) before moving an internal v0 configuration or existing Kernel object under v1 management.

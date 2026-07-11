@@ -13,6 +13,11 @@ variable "project_name" {
   description = "Existing Kernel project name for exact lookup."
 }
 
+variable "browser_pool_name" {
+  type        = string
+  description = "Existing Kernel browser pool name for exact lookup."
+}
+
 variable "profile_name" {
   type        = string
   description = "Existing Kernel profile name for exact lookup."
@@ -42,6 +47,11 @@ data "kernel_project" "selected" {
   name = var.project_name
 }
 
+data "kernel_browser_pool" "selected" {
+  name       = var.browser_pool_name
+  project_id = data.kernel_project.selected.id
+}
+
 data "kernel_profile" "selected" {
   name       = var.profile_name
   project_id = data.kernel_project.selected.id
@@ -65,11 +75,12 @@ data "kernel_app" "selected" {
 
 output "kernel_ids" {
   value = {
-    project_id    = data.kernel_project.selected.id
-    profile_id    = data.kernel_profile.selected.id
-    proxy_id      = data.kernel_proxy.selected.id
-    extension_id  = data.kernel_extension.selected.id
-    app_id        = data.kernel_app.selected.id
-    deployment_id = data.kernel_app.selected.deployment_id
+    project_id      = data.kernel_project.selected.id
+    browser_pool_id = data.kernel_browser_pool.selected.id
+    profile_id      = data.kernel_profile.selected.id
+    proxy_id        = data.kernel_proxy.selected.id
+    extension_id    = data.kernel_extension.selected.id
+    app_id          = data.kernel_app.selected.id
+    deployment_id   = data.kernel_app.selected.deployment_id
   }
 }
