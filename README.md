@@ -142,13 +142,16 @@ export KERNEL_API_KEY="..."
 export KERNEL_PROJECT_ID="..."
 ```
 
-Run the browser-pool acceptance test:
+Run the durable resource acceptance tests:
 
 ```sh
-go test -v ./internal/resources/browserpool -run TestAccBrowserPoolLifecycle
+go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
 ```
 
-The acceptance test creates uniquely named browser pools and uses durable `force=false` cleanup. It does not acquire browsers or perform runtime recovery.
+The tests create uniquely named durable resources and register independent
+cleanup. Browser-pool deletion remains `force=false`. The tests do not acquire
+browsers or perform runtime recovery.
 
 ## Architecture
 
