@@ -85,6 +85,20 @@ func TestExtensionSchemaImmutableAttributePlanSemantics(t *testing.T) {
 		planned, replace = runExtensionStringPlanModifiers(
 			t,
 			attribute,
+			types.StringNull(),
+			types.StringValue("new"),
+			types.StringValue("new"),
+		)
+		if !replace {
+			t.Errorf("configuring %s for previously null state must require replacement", name)
+		}
+		if !planned.Equal(types.StringValue("new")) {
+			t.Errorf("newly configured %s planned value = %v, want new", name, planned)
+		}
+
+		planned, replace = runExtensionStringPlanModifiers(
+			t,
+			attribute,
 			types.StringValue("resolved"),
 			types.StringUnknown(),
 			types.StringNull(),

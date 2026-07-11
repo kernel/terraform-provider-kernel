@@ -23,7 +23,7 @@ func extensionSchema() rschema.Schema {
 			"name": rschema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Optional extension name. Must be unique within the project. Changing a configured name replaces the extension; omitting it preserves the remote name because the API cannot clear a name.",
+				MarkdownDescription: "Optional extension name. Must be unique within the project. Adding or changing a configured name replaces the extension; omitting it preserves the remote name because the API cannot clear a name.",
 				PlanModifiers:       immutableExtensionPlanModifiers(),
 				Validators: []validator.String{
 					extensionNameValidator{},
@@ -32,7 +32,7 @@ func extensionSchema() rschema.Schema {
 			"project_id": rschema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Project this extension belongs to. Defaults to the provider `project_id` when unset; when neither is set, the API key's project binding determines the project. Changing it replaces the extension.",
+				MarkdownDescription: "Project this extension belongs to. Defaults to the provider `project_id` when unset; when neither is set, the API key's project binding determines the project. Adding or changing it replaces the extension.",
 				PlanModifiers:       immutableExtensionPlanModifiers(),
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -49,7 +49,7 @@ func extensionSchema() rschema.Schema {
 			"source_sha256": rschema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Lowercase hexadecimal SHA-256 checksum of the exact extension ZIP bytes. Configure with `filesha256(source_path)`. Changing it replaces the extension.",
+				MarkdownDescription: "Lowercase hexadecimal SHA-256 checksum of the exact extension ZIP bytes. Configure with `filesha256(source_path)`. Adding or changing it replaces the extension.",
 				PlanModifiers:       immutableExtensionPlanModifiers(),
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(extensionChecksumPattern, "must be a 64-character lowercase hexadecimal SHA-256 checksum"),
