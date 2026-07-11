@@ -74,7 +74,11 @@ func flattenResolvedProfileID(pool kernel.BrowserPool, config kernel.BrowserPool
 func flattenResolvedExtensionIDs(pool kernel.BrowserPool, config kernel.BrowserPoolBrowserPoolConfig, base types.List, diags *diag.Diagnostics) types.List {
 	raw := pool.JSON.ExtensionIDs.Raw()
 	if raw != "" {
-		return flattenStringList("extension_ids", raw, pool.JSON.ExtensionIDs.Valid(), pool.ExtensionIDs, diags)
+		resolved := flattenStringList("extension_ids", raw, pool.JSON.ExtensionIDs.Valid(), pool.ExtensionIDs, diags)
+		if !resolved.IsNull() && len(pool.ExtensionIDs) == 0 {
+			return omittedExtensionIDs("", base)
+		}
+		return resolved
 	}
 	if responseFieldPresent(config.JSON.Extensions.Raw()) {
 		return flattenExtensionIDs(config.JSON.Extensions.Valid(), config.Extensions, diags)
