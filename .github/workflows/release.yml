@@ -1,4 +1,4 @@
-name: Release preparation
+name: Release
 
 on:
   push:
@@ -29,6 +29,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          major="${GITHUB_REF_NAME#v}"
+          major="${major%%.*}"
+          if ! [[ "$major" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Public provider release tags must have a semantic-version major of at least 1." >&2
+            exit 1
+          fi
+
           test -s LICENSE || {
             echo "LICENSE must exist before a public provider release." >&2
             exit 1
@@ -113,3 +120,167 @@ jobs:
           retention-days: 7
           compression-level: 0
           overwrite: true
+
+  publish:
+    name: Sign and publish release
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    environment:
+      name: release
+
+    steps:
+      - name: Check release protections
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RULESET_ID: ${{ vars.RELEASE_RULESET_ID }}
+        run: |
+          : "${RELEASE_RULESET_ID:?Set RELEASE_RULESET_ID on the release environment before releasing.}"
+
+          environment="$(gh api "repos/${GITHUB_REPOSITORY}/environments/release")"
+          if ! jq -e '
+            [.protection_rules[]? | select(.type == "required_reviewers")] as $rules |
+            ($rules | length) == 1 and
+            $rules[0].prevent_self_review == true and
+            ($rules[0].reviewers | length) > 0 and
+            .deployment_branch_policy == {
+              protected_branches: false,
+              custom_branch_policies: true
+            }
+          ' <<<"$environment" >/dev/null; then
+            echo "The release environment must require a reviewer, prevent self-review, and use a custom tag policy." >&2
+            exit 1
+          fi
+
+          deployment_policies="$(
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/environments/release/deployment-branch-policies?per_page=100"
+          )"
+          if ! jq -e '
+            [.[] | .branch_policies[] | {name, type}] == [{name: "v*", type: "tag"}]
+          ' <<<"$deployment_policies" >/dev/null; then
+            echo "The release environment must allow only tags matching v*." >&2
+            exit 1
+          fi
+
+          ruleset="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_RULESET_ID}")"
+          if ! jq -e '
+            .target == "tag" and
+            .enforcement == "active" and
+            (.conditions.ref_name.include | sort) == ["refs/tags/v*"] and
+            .conditions.ref_name.exclude == [] and
+            ([.rules[].type] | index("creation") != null) and
+            ([.rules[].type] | index("update") != null) and
+            ([.rules[].type] | index("deletion") != null)
+          ' <<<"$ruleset" >/dev/null; then
+            echo "The release ruleset must actively restrict v* tag creation, update, and deletion." >&2
+            exit 1
+          fi
+
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "release-${GITHUB_REF_NAME}-${GITHUB_RUN_ID}" \
+            --dir dist
+
+      - name: Check publication preconditions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag_commit="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" --jq .sha)"
+          if [ "$tag_commit" != "$GITHUB_SHA" ]; then
+            echo "The release tag no longer points to the workflow commit." >&2
+            exit 1
+          fi
+
+          release="$(
+            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" |
+              jq -c --arg tag "$GITHUB_REF_NAME" '[.[][] | select(.tag_name == $tag)][0] // empty'
+          )"
+          if [ -n "$release" ]; then
+            if [ "$(jq -r .draft <<<"$release")" = "true" ]; then
+              echo "An existing draft release must be inspected and removed before retrying ${GITHUB_REF_NAME}." >&2
+            else
+              echo "A published release already exists for ${GITHUB_REF_NAME}." >&2
+            fi
+            exit 1
+          fi
+
+          checksum="$(find dist -maxdepth 1 -name '*_SHA256SUMS' -print -quit)"
+          test -n "$checksum"
+          (cd dist && sha256sum --check "$(basename "$checksum")")
+
+      - name: Check signing configuration
+        env:
+          EXPECTED_GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: |
+          : "${EXPECTED_GPG_FINGERPRINT:?Set GPG_FINGERPRINT on the release environment before releasing.}"
+          : "${GPG_PRIVATE_KEY:?Set GPG_PRIVATE_KEY on the release environment before releasing.}"
+          : "${PASSPHRASE:?Set PASSPHRASE on the release environment before releasing.}"
+
+      - name: Import GPG key
+        env:
+          EXPECTED_GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          expected="$(printf '%s' "$EXPECTED_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
+          key_details="$(
+            printf '%s' "$GPG_PRIVATE_KEY" |
+              gpg --batch --with-colons --import-options show-only --import 2>/dev/null
+          )"
+          mapfile -t fingerprints < <(
+            awk -F: '
+              $1 == "sec" { primary = 1; next }
+              primary && $1 == "fpr" { print $10; primary = 0 }
+            ' <<<"$key_details"
+          )
+          if [ "${#fingerprints[@]}" -ne 1 ] || [ "${fingerprints[0]}" != "$expected" ]; then
+            echo "The private key must contain exactly the Registry signing key." >&2
+            exit 1
+          fi
+
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Sign checksums
+        env:
+          EXPECTED_GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: |
+          expected="$(printf '%s' "$EXPECTED_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
+          checksum="$(find dist -maxdepth 1 -name '*_SHA256SUMS' -print -quit)"
+          printf '%s' "$PASSPHRASE" |
+            gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
+              --local-user "$expected" --output "${checksum}.sig" --detach-sign "$checksum"
+          gpg --verify "${checksum}.sig" "$checksum"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          version_without_build="${version%%+*}"
+          prerelease=()
+          if [[ "$version_without_build" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+          migration_url="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/migration-v1.md"
+
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.zip \
+            dist/*_manifest.json \
+            dist/*_SHA256SUMS \
+            dist/*_SHA256SUMS.sig \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --notes "Migration guidance: [v1 migration guide](${migration_url})." \
+            --title "$GITHUB_REF_NAME" \
+            "${prerelease[@]}"

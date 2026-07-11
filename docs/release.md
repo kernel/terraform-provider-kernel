@@ -32,8 +32,27 @@ Use this checklist before publishing a Kernel Terraform provider version.
     7. Read each test-owned canonical resource ID and require a 404 before considering cleanup complete.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
-- Confirm the repository license before the first public release. Do not publish a public tag until `LICENSE` exists or the release owner has explicitly documented the licensing decision.
+- Confirm the repository license before the first public release. The release workflow fails unless a non-empty `LICENSE` exists.
 - Confirm GitHub private vulnerability reporting or a public security contact is configured and reflected in `SECURITY.md`.
+- Create a protected GitHub environment named `release`, require approval from
+  the designated release owners, prevent self-review, and disable administrator
+  bypass. Add exactly one deployment policy: tags matching `v*`. Store
+  `GPG_PRIVATE_KEY` and `PASSPHRASE` as environment secrets, not repository
+  secrets. Set the environment variable `GPG_FINGERPRINT` to the fingerprint
+  registered with the Terraform Registry. GitHub's environment API does not
+  report whether administrator bypass is disabled, so verify that setting when
+  approving a release.
+- Add a repository ruleset that restricts creation, update, and deletion of
+  `v*` tags to the designated release owners. Do not rely on general repository
+  write access as release authority. Set the `release` environment variable
+  `RELEASE_RULESET_ID` to that active ruleset's numeric ID. The workflow verifies
+  the live environment reviewer, tag policy, and ruleset controls before
+  touching signing configuration. Before setting the ID, inspect the ruleset's
+  bypass list and require explicit release-owner teams or GitHub Apps; do not
+  allow repository roles or organization administrators to bypass it. GitHub
+  omits bypass actors from ruleset API responses unless the caller has ruleset
+  write access, so the least-privilege workflow cannot verify their identities
+  at runtime.
 - Confirm there is no branch named like the release tag, for example `v1.0.0`.
 
 ## Registry Release Assets
@@ -57,13 +76,26 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
   platforms, checksums, and manifest inclusion.
 - Normal CI runs `goreleaser check`; it does not cross-compile every target or
   publish artifacts.
-- `.github/workflows/release.yml` runs for `v*` tags with read-only repository
-  access. It requires a non-empty `LICENSE`, public repository visibility, and a
-  tag commit reachable from `main`, then builds and validates the unsigned
-  registry assets. The workflow artifact is retained for seven days for release
-  inspection.
-- Signing and publication remain separate manual release gates until release
-  ownership and a protected publication workflow are configured.
+- `.github/workflows/release.yml` runs for `v*` tags. Its preparation job has
+  read-only repository access and rejects major version zero before requiring a
+  non-empty `LICENSE`, public repository visibility, and a tag commit reachable
+  from `main`. GoReleaser validates the complete SemVer tag, then builds and
+  validates the unsigned registry assets. The workflow artifact is retained for
+  seven days for release inspection. Only the protected publication job receives
+  `contents: write`.
+- Inspect the prepared artifact and confirm the acceptance matrix passed before
+  approving the protected `release` job. Confirm the tag ruleset's bypass list
+  still contains only designated release owners as part of that approval. After
+  approval, the job revalidates the tag and checksums, requires the imported key
+  to match `GPG_FINGERPRINT`, signs the checksum file, and publishes the GitHub
+  Release. Semantic prerelease tags are marked as GitHub prereleases.
+- Failed-job reruns reuse the prepared artifact from the same workflow run. A
+  full rerun replaces that run's artifact and requires a fresh environment
+  approval. If publication fails or is interrupted, it may leave a draft. Any
+  existing draft stops retries until a release owner inspects and removes it
+  manually. An existing published release always stops the workflow.
+- GitHub prepends the tagged [v1 migration guide](migration-v1.md) to release
+  notes generated from `.github/release.yml`.
 
 ## Registry Setup
 
@@ -96,3 +128,4 @@ References:
 
 - HashiCorp Terraform provider publishing: https://developer.hashicorp.com/terraform/registry/providers/publishing
 - HashiCorp provider registry protocol: https://developer.hashicorp.com/terraform/internals/provider-registry-protocol
+- GitHub deployment environments: https://docs.github.com/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
