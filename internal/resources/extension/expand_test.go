@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	kernel "github.com/kernel/kernel-go-sdk"
 )
 
 func TestExpandExtensionUploadMapsVerifiedSnapshot(t *testing.T) {
@@ -56,10 +57,11 @@ func TestExpandExtensionUploadRejectsUnknownName(t *testing.T) {
 	t.Parallel()
 
 	snapshot := archiveSnapshot{checksum: strings.Repeat("a", 64)}
-	_, diags := expandExtensionUpload(extensionModel{
+	params, diags := expandExtensionUpload(extensionModel{
 		Name:         types.StringUnknown(),
 		SourceSHA256: types.StringValue(snapshot.checksum),
 	}, snapshot)
+	assertEmptyExtensionUploadParams(t, params)
 	assertExtensionUploadDiagnostic(t, diags, "name", "must be known")
 }
 
@@ -72,10 +74,11 @@ func TestExpandExtensionUploadRejectsUnknownOrNullChecksum(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, diags := expandExtensionUpload(extensionModel{
+			params, diags := expandExtensionUpload(extensionModel{
 				Name:         types.StringNull(),
 				SourceSHA256: value,
 			}, archiveSnapshot{})
+			assertEmptyExtensionUploadParams(t, params)
 			assertExtensionUploadDiagnostic(t, diags, "source_sha256", "must be known")
 		})
 	}
@@ -86,11 +89,38 @@ func TestExpandExtensionUploadRejectsChecksumMismatch(t *testing.T) {
 
 	configured := strings.Repeat("a", 64)
 	actual := strings.Repeat("b", 64)
-	_, diags := expandExtensionUpload(extensionModel{
+	params, diags := expandExtensionUpload(extensionModel{
 		Name:         types.StringNull(),
 		SourceSHA256: types.StringValue(configured),
 	}, archiveSnapshot{checksum: actual})
+	assertEmptyExtensionUploadParams(t, params)
 	assertExtensionUploadDiagnostic(t, diags, "source_sha256", "archive checksum is "+actual)
+}
+
+func TestExpandExtensionUploadReportsAllInvalidAttributes(t *testing.T) {
+	t.Parallel()
+
+	params, diags := expandExtensionUpload(extensionModel{
+		Name:         types.StringUnknown(),
+		SourceSHA256: types.StringNull(),
+	}, archiveSnapshot{})
+	assertEmptyExtensionUploadParams(t, params)
+	if len(diags) != 2 {
+		t.Fatalf("diagnostics = %v, want two errors", diags)
+	}
+	for _, attribute := range []string{"name", "source_sha256"} {
+		if !extensionUploadDiagnosticHasPath(diags, path.Root(attribute)) {
+			t.Errorf("diagnostics = %v, want %s error", diags, attribute)
+		}
+	}
+}
+
+func assertEmptyExtensionUploadParams(t *testing.T, params kernel.ExtensionUploadParams) {
+	t.Helper()
+
+	if params.File != nil || params.Name.Valid() {
+		t.Fatalf("params = %#v, want no upload parameters on diagnostics", params)
+	}
 }
 
 func assertExtensionUploadDiagnostic(t *testing.T, diags diag.Diagnostics, attribute, detail string) {
@@ -106,4 +136,14 @@ func assertExtensionUploadDiagnostic(t *testing.T, diags diag.Diagnostics, attri
 	if !ok || !withPath.Path().Equal(path.Root(attribute)) {
 		t.Fatalf("diagnostic path = %v, want %s", withPath, attribute)
 	}
+}
+
+func extensionUploadDiagnosticHasPath(diags diag.Diagnostics, want path.Path) bool {
+	for _, diagnostic := range diags {
+		withPath, ok := diagnostic.(diag.DiagnosticWithPath)
+		if ok && withPath.Path().Equal(want) {
+			return true
+		}
+	}
+	return false
 }

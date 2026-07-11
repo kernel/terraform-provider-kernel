@@ -17,9 +17,7 @@ func expandExtensionUpload(config extensionModel, snapshot archiveSnapshot) (ker
 			"Invalid Extension Source Checksum",
 			"source_sha256 must be known before uploading a Kernel extension.",
 		)
-		return kernel.ExtensionUploadParams{}, diags
-	}
-	if config.SourceSHA256.ValueString() != snapshot.checksum {
+	} else if config.SourceSHA256.ValueString() != snapshot.checksum {
 		diags.AddAttributeError(
 			path.Root("source_sha256"),
 			"Extension Source Checksum Mismatch",
@@ -29,7 +27,6 @@ func expandExtensionUpload(config extensionModel, snapshot archiveSnapshot) (ker
 				snapshot.checksum,
 			),
 		)
-		return kernel.ExtensionUploadParams{}, diags
 	}
 	if config.Name.IsUnknown() {
 		diags.AddAttributeError(
@@ -37,6 +34,8 @@ func expandExtensionUpload(config extensionModel, snapshot archiveSnapshot) (ker
 			"Invalid Extension Name",
 			"name must be known before uploading a Kernel extension.",
 		)
+	}
+	if diags.HasError() {
 		return kernel.ExtensionUploadParams{}, diags
 	}
 
