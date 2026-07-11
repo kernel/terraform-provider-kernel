@@ -30,9 +30,9 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 		ID:                types.StringValue(pool.ID),
 		Name:              flattenName(pool, &diags),
 		Size:              types.Int64Value(config.Size),
-		ProfileID:         types.StringNull(),
+		ProfileID:         flattenResolvedProfileID(pool, config, &diags),
 		ProxyID:           flattenString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
-		ExtensionIDs:      omittedExtensionIDs(config.JSON.Extensions.Raw(), base.ExtensionIDs),
+		ExtensionIDs:      flattenResolvedExtensionIDs(pool, config, base.ExtensionIDs, &diags),
 		ChromePolicy:      omittedChromePolicy(config.JSON.ChromePolicy.Raw(), base.ChromePolicy),
 		Viewport:          types.ObjectNull(viewportAttrTypes()),
 		Headless:          flattenBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
@@ -43,12 +43,6 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
 	}
 
-	if responseFieldPresent(config.JSON.Profile.Raw()) {
-		model.ProfileID = flattenProfileID(config.Profile, &diags)
-	}
-	if responseFieldPresent(config.JSON.Extensions.Raw()) {
-		model.ExtensionIDs = flattenExtensionIDs(config.JSON.Extensions.Valid(), config.Extensions, &diags)
-	}
 	if responseFieldPresent(config.JSON.ChromePolicy.Raw()) {
 		model.ChromePolicy = flattenChromePolicy(config.JSON.ChromePolicy.Raw(), &diags)
 	}
@@ -60,6 +54,32 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 		return browserPoolModel{}, diags
 	}
 	return model, diags
+}
+
+func flattenResolvedProfileID(pool kernel.BrowserPool, config kernel.BrowserPoolBrowserPoolConfig, diags *diag.Diagnostics) types.String {
+	raw := pool.JSON.ProfileID.Raw()
+	if raw != "" {
+		if !responseFieldPresent(raw) {
+			addInvalidResponseDiagnostic(diags, "profile_id")
+			return types.StringNull()
+		}
+		return flattenString("profile_id", raw, pool.JSON.ProfileID.Valid(), pool.ProfileID, diags)
+	}
+	if responseFieldPresent(config.JSON.Profile.Raw()) {
+		return flattenProfileID(config.Profile, diags)
+	}
+	return types.StringNull()
+}
+
+func flattenResolvedExtensionIDs(pool kernel.BrowserPool, config kernel.BrowserPoolBrowserPoolConfig, base types.List, diags *diag.Diagnostics) types.List {
+	raw := pool.JSON.ExtensionIDs.Raw()
+	if raw != "" {
+		return flattenStringList("extension_ids", raw, pool.JSON.ExtensionIDs.Valid(), pool.ExtensionIDs, diags)
+	}
+	if responseFieldPresent(config.JSON.Extensions.Raw()) {
+		return flattenExtensionIDs(config.JSON.Extensions.Valid(), config.Extensions, diags)
+	}
+	return omittedExtensionIDs(config.JSON.Extensions.Raw(), base)
 }
 
 func flattenName(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {
@@ -157,6 +177,24 @@ func flattenExtensionIDs(valid bool, extensions []shared.BrowserExtension, diags
 	list, listDiags := types.ListValue(types.StringType, values)
 	diags.Append(listDiags...)
 	return list
+}
+
+func flattenStringList(field, raw string, valid bool, values []string, diags *diag.Diagnostics) types.List {
+	var decoded []string
+	if !responseFieldPresent(raw) || !valid || json.Unmarshal([]byte(raw), &decoded) != nil || len(decoded) != len(values) {
+		addInvalidResponseDiagnostic(diags, field)
+		return types.ListNull(types.StringType)
+	}
+
+	elements := make([]attr.Value, 0, len(values))
+	for index, value := range values {
+		if value == "" || decoded[index] != value {
+			addInvalidResponseDiagnostic(diags, fmt.Sprintf("%s[%d]", field, index))
+			return types.ListNull(types.StringType)
+		}
+		elements = append(elements, types.StringValue(value))
+	}
+	return types.ListValueMust(types.StringType, elements)
 }
 
 func omittedExtensionIDs(raw string, base types.List) types.List {

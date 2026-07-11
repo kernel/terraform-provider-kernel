@@ -12,14 +12,16 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	pool := unmarshalBrowserPool(t, `{
 		"id": "pool-1",
 		"name": "top-level-name",
+		"profile_id": "profile-resolved",
+		"extension_ids": ["ext-resolved-b", "ext-resolved-a"],
 		"acquired_count": 2,
 		"available_count": 3,
 		"browser_pool_config": {
 			"size": 5,
 			"name": "config-name",
-			"profile": {"id": "profile-1", "name": "profile-name"},
+			"profile": {"name": "profile-selector"},
 			"proxy_id": "proxy-1",
-			"extensions": [{"id": "ext-b"}, {"id": "ext-a"}],
+			"extensions": [{"name": "extension-b"}, {"name": "extension-a"}],
 			"chrome_policy": {
 				"RestoreOnStartup": 4,
 				"HomepageLocation": "https://example.com"
@@ -52,13 +54,13 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	if got.Size.ValueInt64() != 5 {
 		t.Fatalf("size = %d, want 5", got.Size.ValueInt64())
 	}
-	if got.ProfileID.ValueString() != "profile-1" {
-		t.Fatalf("profile_id = %q, want profile-1", got.ProfileID.ValueString())
+	if got.ProfileID.ValueString() != "profile-resolved" {
+		t.Fatalf("profile_id = %q, want profile-resolved", got.ProfileID.ValueString())
 	}
 	if got.ProxyID.ValueString() != "proxy-1" {
 		t.Fatalf("proxy_id = %q, want proxy-1", got.ProxyID.ValueString())
 	}
-	assertStringList(t, got.ExtensionIDs, []string{"ext-b", "ext-a"})
+	assertStringList(t, got.ExtensionIDs, []string{"ext-resolved-b", "ext-resolved-a"})
 	if got.ChromePolicy.ValueString() != `{"HomepageLocation":"https://example.com","RestoreOnStartup":4}` {
 		t.Fatalf("chrome_policy = %q, want normalized JSON", got.ChromePolicy.ValueString())
 	}
@@ -81,6 +83,26 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	if got.FillRatePerMinute.ValueInt64() != 20 {
 		t.Fatalf("fill_rate_per_minute = %d, want 20", got.FillRatePerMinute.ValueInt64())
 	}
+}
+
+func TestFlattenBrowserPoolUsesLegacySelectorsWhenResolvedFieldsAreOmitted(t *testing.T) {
+	pool := unmarshalBrowserPool(t, `{
+		"id": "pool-1",
+		"browser_pool_config": {
+			"size": 1,
+			"profile": {"id": "profile-legacy"},
+			"extensions": [{"id": "extension-b"}, {"id": "extension-a"}]
+		}
+	}`)
+
+	got, diags := flattenBrowserPool(pool, browserPoolModel{})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if got.ProfileID.ValueString() != "profile-legacy" {
+		t.Fatalf("profile_id = %q, want profile-legacy", got.ProfileID.ValueString())
+	}
+	assertStringList(t, got.ExtensionIDs, []string{"extension-b", "extension-a"})
 }
 
 func TestFlattenBrowserPoolUsesConfigNameWhenTopLevelNameOmitted(t *testing.T) {
@@ -302,6 +324,59 @@ func TestFlattenBrowserPoolRejectsExtensionResponseWithoutID(t *testing.T) {
 	_, diags := flattenBrowserPool(pool, browserPoolModel{})
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for extension response without id")
+	}
+}
+
+func TestFlattenBrowserPoolRejectsInvalidResolvedReferenceFields(t *testing.T) {
+	tests := map[string]string{
+		"profile id is null": `{
+			"id": "pool-1",
+			"profile_id": null,
+			"browser_pool_config": {
+				"size": 1,
+				"profile": {"id": "profile-fallback"}
+			}
+		}`,
+		"profile id has wrong type": `{
+			"id": "pool-1",
+			"profile_id": 123,
+			"browser_pool_config": {
+				"size": 1,
+				"profile": {"id": "profile-fallback"}
+			}
+		}`,
+		"extension ids have wrong type": `{
+			"id": "pool-1",
+			"extension_ids": {},
+			"browser_pool_config": {
+				"size": 1,
+				"extensions": [{"id": "extension-fallback"}]
+			}
+		}`,
+		"extension ids are null": `{
+			"id": "pool-1",
+			"extension_ids": null,
+			"browser_pool_config": {
+				"size": 1,
+				"extensions": [{"id": "extension-fallback"}]
+			}
+		}`,
+		"extension id is empty": `{
+			"id": "pool-1",
+			"extension_ids": [""],
+			"browser_pool_config": {
+				"size": 1
+			}
+		}`,
+	}
+
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, diags := flattenBrowserPool(unmarshalBrowserPool(t, data), browserPoolModel{})
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics for invalid resolved reference field")
+			}
+		})
 	}
 }
 
