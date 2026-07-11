@@ -12,18 +12,18 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
-- Run opt-in acceptance tests with real credentials before the first public release:
-  - `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`
-  - or run the manual `Acceptance` GitHub Actions workflow with `KERNEL_API_KEY` and `KERNEL_PROJECT_ID` repository secrets configured.
+- Run the complete opt-in acceptance matrix for every v1 resource and data source with real credentials before the first public release.
+  - The current v0 baseline command is `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`.
+  - Expand the manual `Acceptance` workflow as v1 resources land; keep live tests out of normal PR CI.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
 - Confirm the repository license before the first public release. Do not publish a public tag until `LICENSE` exists or the release owner has explicitly documented the licensing decision.
 - Confirm GitHub private vulnerability reporting or a public security contact is configured and reflected in `SECURITY.md`.
-- Confirm there is no branch named like the release tag, for example `v0.1.0`.
+- Confirm there is no branch named like the release tag, for example `v1.0.0`.
 
 ## Registry Release Assets
 
-Terraform Registry provider releases are GitHub Releases with semver tags prefixed by `v`, such as `v0.1.0`.
+Terraform Registry provider releases are GitHub Releases with semver tags prefixed by `v`, such as `v1.0.0`.
 
 Each release must include:
 
@@ -55,12 +55,15 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 ## Security And State Review
 
 - Provider `api_key` remains sensitive.
-- No resource or data source exposes Kernel API keys, project creation, or project mutation.
 - `internal/kernelclient` exposes durable methods only; no acquire, release, flush, force-release, screenshots, logs, live view, or app invocation.
-- `kernel_browser_pool` state contains durable desired configuration only.
+- Every resource state contains durable desired configuration only.
+- Every data source is lookup-only and side-effect free.
+- Project lifecycle uses organization-scoped endpoints and documents the permissions required for create, archive, and delete; if project limits are included later, their permissions receive a separate review.
+- If API key management is included, reads expose masked metadata only; plaintext-once values are sensitive, import cannot recover plaintext, and rotation/self-use semantics have explicit safety review.
+- Proxy credentials, deployment environment variables, source tokens, and other secret inputs are sensitive and preserve configured state when API reads return masked values.
 - Browser pool read state does not include runtime counters, standby state, leased-browser state, runtime URLs, screenshots, logs, or live-view fields.
 - Delete uses `force=false`; Terraform must not terminate leased browsers as cleanup.
-- Import sets the canonical browser pool ID and relies on read-after-import to settle state.
+- Each resource imports by canonical ID where the API can reconstruct durable state; metadata-only or unsupported imports are documented rather than guessed.
 - Acceptance tests create unique resources and register cleanup without force-delete behavior.
 - Generated docs match schema output from `scripts/check-docs.sh`.
 - Release artifacts are signed and checksummed before the GitHub release is finalized.

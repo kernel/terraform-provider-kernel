@@ -1,12 +1,12 @@
 # Kernel Terraform Provider Architecture
 
-This document records the v0 architecture and phase-2 delivery plan for the Kernel Terraform provider.
+This document records the durable-only architecture, the implemented v0 baseline, and the target scope for the first public v1 of the Kernel Terraform provider.
 
 ## First Principles
 
 Terraform should manage durable desired state. Kernel runtime operations stay in the Kernel SDK and API.
 
-For v0, the provider must be boring and direct:
+The provider must remain boring and direct:
 
 - Use Terraform Plugin Framework in Go.
 - Build a Go plugin binary.
@@ -38,20 +38,62 @@ Data sources:
 
 Import:
 
-- `kernel_browser_pool` imports by canonical browser pool ID.
+- `kernel_browser_pool` imports by canonical browser pool ID, optionally qualified as `<project-id>/<pool-id>`.
+
+## v1 Target Scope
+
+The first public v1 should make durable Kernel configuration production-ready without turning Terraform into a runtime control plane. Core items are release-blocking unless the release notes explicitly defer them with an upstream API or SDK blocker.
+
+Resources require stable identity, refresh, delete, import, and, where applicable, project-scoping and sensitive-state semantics. Data sources require stable identity, deterministic exact lookup, and, where applicable, masked sensitive metadata, pagination, and project scoping. Tooling experiments require deterministic regeneration and must preserve the handwritten lifecycle boundary.
+
+Core v1 resources:
+
+- `kernel_project` for basic project lifecycle; project limits remain separate and deferred
+- `kernel_browser_pool`, preserving and hardening the v0 durable model
+- `kernel_profile` for metadata lifecycle; runtime-written archive contents remain excluded
+- `kernel_extension` for uploaded packages with stable content checksums
+- `kernel_deployment` for deployment lifecycle, not app invocation
+
+Core v1 data sources:
+
+- `kernel_project`
+- `kernel_browser_pool`
+- `kernel_profile`
+- `kernel_proxy`
+- `kernel_extension`
+- `kernel_deployment`
+- `kernel_app`
+
+Late or conditional v1 work:
+
+- `kernel_proxy` resource, after write-only credential and import semantics are accepted
+- masked `kernel_api_key` metadata lookup
+- `kernel_api_key` resource, only after plaintext-once, retry, rotation, import, and provider self-use semantics are accepted
+- project limits, only after their lifecycle is clearly separate from basic project management
+- an accepted, non-blocking code-generation canary for the `kernel_extension` data-source schema and model
+
+Blocked candidates must remain unimplemented until the API and a tagged SDK expose the required durable contract. Provider code must not guess missing semantics, patch generated SDK code, or add a fallback HTTP client to bypass the durable client module.
+
+The code-generation canary may proceed from a curated Terraform specification without waiting for broad OpenAPI contract cleanup. Broad OpenAPI-driven generation remains deferred.
 
 ## Explicit Non-Goals
 
-These are intentionally not Terraform resources or actions in v0:
+These are intentionally not Terraform resources or actions:
 
 - browser sessions
-- acquire/release
+- acquire, release, or browser-pool flush
 - app invocation
-- logs, screenshots, or live view
-- runtime status or standby state
-- force-release/recovery operations
-- API key resources
-- project resources
+- `kernel_app` resources; apps remain lookup-only unless a later API exposes a separate durable app lifecycle
+- invocation cleanup or status mutation
+- logs, screenshots, live view, or telemetry streams
+- runtime counters, standby state, lease state, or session state
+- force-release, recovery, or managed runtime browser updates
+- billing, organization membership, audit-log, managed-auth, or internal administration resources
+- standalone secrets without a dedicated durable secrets API
+
+`force_destroy` for browser pools is deferred beyond the initial v1 scope unless a demonstrated workflow justifies a later architecture amendment. Terraform should not terminate leased runtime work as ordinary durable-resource cleanup.
+
+Chrome Web Store download is not an extension resource because downloading a package does not create a durable Kernel extension record.
 
 ## Package Layout
 
@@ -59,11 +101,8 @@ These are intentionally not Terraform resources or actions in v0:
 cmd/terraform-provider-kernel/main.go
 internal/provider/
 internal/kernelclient/
-internal/resources/browserpool/
-internal/datasources/project/
-internal/datasources/profile/
-internal/datasources/proxy/
-internal/datasources/extension/
+internal/resources/<resource>/
+internal/datasources/<data-source>/
 internal/acctest/
 docs/
 examples/
@@ -74,7 +113,7 @@ Ownership:
 - `cmd/terraform-provider-kernel` starts the provider plugin.
 - `internal/provider` owns provider registration, provider schema, and resource/data-source wiring.
 - `internal/kernelclient` owns SDK construction and durable API operations only.
-- `internal/resources/browserpool` owns the browser pool Terraform schema, model, CRUD, import, and tests.
+- `internal/resources/*` owns one durable resource package per Kernel type, including schema, model, lifecycle, import, and tests.
 - `internal/datasources/*` owns one data source package per Kernel durable lookup type.
 - `internal/acctest` owns opt-in acceptance test helpers.
 
@@ -84,7 +123,7 @@ Ownership:
 
 It must not expose SDK runtime methods such as acquire, release, flush, force-release, session operations, logs, screenshots, or live view. This creates a compile-time guard against accidentally wiring runtime Kernel operations into Terraform.
 
-The provider uses the Kernel Go SDK only. There is no fallback HTTP client in v0.
+The provider uses tagged releases of the Kernel Go SDK only. There is no fallback HTTP client.
 
 ## Provider Configuration
 
@@ -125,7 +164,7 @@ Runtime fields are intentionally excluded, including acquired counts, available 
 
 Durable fields with server defaults use Terraform `Optional + Computed` semantics so create/read/import can round-trip API-defaulted durable configuration without future preserve-null special cases. Runtime fields are still excluded rather than modeled as computed attributes.
 
-`profile_save_changes` is intentionally omitted in v0 because the browser pool API currently rejects it for browser pools.
+`profile_save_changes` is intentionally omitted because saving browser-session changes is not part of the browser-pool durable contract.
 
 `chrome_policy` is stored as written at the Terraform boundary (the raw JSON object string); Terraform semantic equality treats key-order- or whitespace-different but equivalent JSON as unchanged, and a malformed value is rejected by the attribute validator rather than during value conversion. It is normalized only for comparison and decoded into the SDK shape only at the final SDK call boundary.
 
@@ -138,17 +177,28 @@ Each data source should be lookup-only and side-effect free.
 Expected lookup shape:
 
 - project: lookup current or named project metadata
+- browser pool: lookup durable pool configuration
 - profile: lookup profile by ID or supported selector
 - proxy: lookup proxy by ID or supported selector
 - extension: lookup extension by ID or supported selector
+- deployment: lookup durable deployment metadata
+- app: lookup a currently runnable app version without invoking it
+- API key, if accepted: masked metadata only
+
+Lookup semantics must be deterministic:
+
+- zero exact matches fail
+- one exact match succeeds
+- multiple exact matches fail
+- fuzzy matches never silently win
 
 Data sources must not create, mutate, acquire, release, invoke, or recover Kernel runtime objects.
 
 ## Import Behavior
 
-`kernel_browser_pool` import uses the canonical browser pool ID.
+Every resource should import by canonical ID where the API can reconstruct durable state. Project-scoped resources may also accept a documented project-qualified form when needed to resolve a non-default project.
 
-Read after import must flatten durable API state into Terraform state without introducing runtime fields. If the API returns values v0 cannot represent safely, the provider should return a clear diagnostic instead of guessing.
+Read after import must flatten durable API state into Terraform state without introducing runtime fields. If the API cannot return create-only configuration or sensitive values, the resource must document metadata-only import or remain deferred. The provider returns a clear diagnostic instead of guessing.
 
 ## Testing Strategy
 
@@ -168,6 +218,7 @@ Acceptance tests must:
 - create uniquely named resources
 - clean up after themselves
 - avoid browser/session runtime operations
+- exercise import and real delete behavior for each resource
 
 ## PR Slicing
 
@@ -177,26 +228,27 @@ Prefer PRs that add one durable behavior at a time, with tests that prove the ne
 
 ## Review Gates
 
-Every PR loop has five gates:
+Every PR loop has six sequential gates:
 
 1. `deslop`
-2. `autoreview`
-3. `thermo-nuclear-code-quality-review`
+2. incremental self-review
+3. `autoreview`
 4. `dave-cheney-go-review`
 5. `eblog-code-review`
+6. final agreement pass
 
 Loop:
 
 1. Implement the PR scope.
 2. Run gofmt, go test, go vet, and relevant Terraform validation.
-3. Run all five review gates.
+3. Run all six review gates in order.
 4. Fix every accepted and actionable finding.
 5. Rerun tests.
-6. Rerun all five review gates.
-7. Repeat until all five gates are clean.
+6. Rerun the affected review gates.
+7. Repeat until the final agreement pass is clean.
 8. Push and open/update the PR.
 
-If review gates conflict, choose the simpler and safer design unless it violates Terraform semantics.
+Use additional specialist security, API-contract, or code-quality reviews when the PR's risk warrants them. If review gates conflict, choose the simpler and safer design unless it violates Terraform semantics.
 
 ## Release And Docs Strategy
 
@@ -211,4 +263,5 @@ Release checklist:
 - Sensitive values are marked sensitive.
 - Runtime operations are absent from Terraform resources.
 - Import behavior is documented.
-- Release process and versioning are documented before v0 publication.
+- API and SDK blockers are either resolved or explicitly deferred.
+- Release process, signing, licensing, and versioning are complete before the first public v1 publication.
