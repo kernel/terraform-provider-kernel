@@ -67,8 +67,8 @@ func TestCreateProjectCreatesAndFlattensState(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	if result.Status != projectCreateSucceeded {
-		t.Fatalf("create status = %v, want succeeded", result.Status)
+	if result.UncertainErr != nil {
+		t.Fatalf("uncertain error = %v, want successful create", result.UncertainErr)
 	}
 	if got, want := gotParams.CreateProjectRequest.Name, "Project"; got != want {
 		t.Fatalf("create name = %q, want %q", got, want)
@@ -88,16 +88,16 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 	malformedSuccess := projectForTest(t, `{"id":"project_123"}`)
 	mismatchedSuccess := projectForTest(t, `{"id":"project_123","name":"Different"}`)
 	tests := map[string]struct {
-		resource    *projectResource
-		wantStatus  projectCreateStatus
-		wantSummary string
-		wantDetail  string
-		wantID      string
-		wantName    string
+		resource      *projectResource
+		wantSummary   string
+		wantDetail    string
+		wantUncertain bool
+		wantReason    string
+		wantID        string
+		wantName      string
 	}{
 		"missing client": {
 			resource:    &projectResource{},
-			wantStatus:  projectCreateFailed,
 			wantSummary: "Missing Kernel Client",
 			wantDetail:  "The Kernel provider was not configured before using the project resource.",
 		},
@@ -107,7 +107,6 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 					return nil, conflictError
 				},
 			}),
-			wantStatus:  projectCreateFailed,
 			wantSummary: "Create Kernel Project",
 			wantDetail:  "409 Conflict",
 		},
@@ -117,9 +116,16 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 					return nil, errors.New("response timeout")
 				},
 			}),
-			wantStatus:  projectCreateUncertain,
-			wantSummary: "Kernel Project Creation Outcome Uncertain",
-			wantDetail:  "response timeout",
+			wantUncertain: true,
+			wantReason:    "response timeout",
+		},
+		"transport error without detail": {
+			resource: newResourceWithClient(fakeProjectClient{
+				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
+					return nil, errors.New("")
+				},
+			}),
+			wantUncertain: true,
 		},
 		"empty success response": {
 			resource: newResourceWithClient(fakeProjectClient{
@@ -127,9 +133,8 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 					return nil, nil
 				},
 			}),
-			wantStatus:  projectCreateUncertain,
-			wantSummary: "Kernel Project Creation Outcome Uncertain",
-			wantDetail:  "Kernel returned an empty project response.",
+			wantUncertain: true,
+			wantReason:    "Kernel returned an empty project response.",
 		},
 		"malformed success preserves valid id": {
 			resource: newResourceWithClient(fakeProjectClient{
@@ -137,11 +142,10 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 					return &malformedSuccess, nil
 				},
 			}),
-			wantStatus:  projectCreateUncertain,
-			wantSummary: "Kernel Project Creation Outcome Uncertain",
-			wantDetail:  "missing or invalid field name",
-			wantID:      "project_123",
-			wantName:    "Project",
+			wantUncertain: true,
+			wantReason:    "missing or invalid field name",
+			wantID:        "project_123",
+			wantName:      "Project",
 		},
 		"mismatched success name preserves planned name": {
 			resource: newResourceWithClient(fakeProjectClient{
@@ -149,11 +153,10 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 					return &mismatchedSuccess, nil
 				},
 			}),
-			wantStatus:  projectCreateUncertain,
-			wantSummary: "Kernel Project Creation Outcome Uncertain",
-			wantDetail:  `Kernel returned project name "Different" instead of the requested name.`,
-			wantID:      "project_123",
-			wantName:    "Project",
+			wantUncertain: true,
+			wantReason:    `Kernel returned project name "Different" instead of the requested name.`,
+			wantID:        "project_123",
+			wantName:      "Project",
 		},
 	}
 
@@ -161,21 +164,24 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			result, diags := test.resource.create(context.Background(), projectModel{Name: types.StringValue("Project")})
-			if len(diags) != 1 {
-				t.Fatalf("diagnostics = %v, want one error", diags)
+			if test.wantSummary != "" {
+				if len(diags) != 1 {
+					t.Fatalf("diagnostics = %v, want one error", diags)
+				}
+				if got := diags[0].Summary(); got != test.wantSummary {
+					t.Fatalf("diagnostic summary = %q, want %q", got, test.wantSummary)
+				}
+				if detail := diags[0].Detail(); !strings.Contains(detail, test.wantDetail) {
+					t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, test.wantDetail)
+				}
+			} else if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
 			}
-			if result.Status != test.wantStatus {
-				t.Fatalf("create status = %v, want %v", result.Status, test.wantStatus)
+			if got := result.UncertainErr != nil; got != test.wantUncertain {
+				t.Fatalf("uncertain = %t, want %t (error: %v)", got, test.wantUncertain, result.UncertainErr)
 			}
-			if got := diags[0].Summary(); got != test.wantSummary {
-				t.Fatalf("diagnostic summary = %q, want %q", got, test.wantSummary)
-			}
-			detail := diags[0].Detail()
-			if !strings.Contains(detail, test.wantDetail) {
-				t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, test.wantDetail)
-			}
-			if test.wantStatus == projectCreateUncertain && !strings.Contains(detail, "import its project ID before applying again") {
-				t.Fatalf("uncertain diagnostic detail = %q, want import guidance", detail)
+			if test.wantReason != "" && (result.UncertainErr == nil || !strings.Contains(result.UncertainErr.Error(), test.wantReason)) {
+				t.Fatalf("uncertain error = %v, want it to contain %q", result.UncertainErr, test.wantReason)
 			}
 			if got := result.State.ID.ValueString(); got != test.wantID {
 				t.Fatalf("state id = %q, want %q", got, test.wantID)
@@ -198,18 +204,15 @@ func TestCreateProjectReportsEveryMalformedResponseField(t *testing.T) {
 	})
 
 	result, diags := r.create(context.Background(), projectModel{Name: types.StringValue("Project")})
-	if result.Status != projectCreateUncertain {
-		t.Fatalf("create status = %v, want uncertain", result.Status)
-	}
-	if len(diags) != 1 {
-		t.Fatalf("diagnostics = %v, want one uncertain-outcome error", diags)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
 	for _, reason := range []string{
 		"missing or invalid field id",
 		"missing or invalid field name",
 	} {
-		if detail := diags[0].Detail(); !strings.Contains(detail, reason) {
-			t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, reason)
+		if result.UncertainErr == nil || !strings.Contains(result.UncertainErr.Error(), reason) {
+			t.Fatalf("uncertain error = %v, want it to contain %q", result.UncertainErr, reason)
 		}
 	}
 }
