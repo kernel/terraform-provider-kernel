@@ -31,6 +31,7 @@ type projectClient interface {
 	CreateProject(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
 	GetProject(context.Context, string) (*kernel.Project, error)
 	UpdateProject(context.Context, string, kernel.ProjectUpdateParams) (*kernel.Project, error)
+	DeleteProject(context.Context, string) error
 }
 
 type projectResource struct {
@@ -194,6 +195,37 @@ func (r *projectResource) update(ctx context.Context, plan, state projectModel) 
 	return nextState, diags
 }
 
+func (r *projectResource) delete(ctx context.Context, state projectModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if r.client == nil {
+		addMissingClientDiagnostic(&diags)
+		return diags
+	}
+
+	id, ok := stateProjectID(state, "delete", &diags)
+	if !ok {
+		return diags
+	}
+
+	if err := r.client.DeleteProject(ctx, id); err != nil {
+		// Kernel also uses not_found when projects are disabled. Terraform still
+		// treats it as absence because the API provides no distinguishable signal.
+		if projectscope.IsNotFound(err) {
+			return diags
+		}
+		if projectDeleteConflict(err) {
+			diags.AddError(
+				"Delete Kernel Project",
+				"Kernel refused to delete project "+strconv.Quote(id)+". A project must have no active resources, and its organization must retain at least one active project. Terraform will not delete child resources implicitly. Underlying error: "+err.Error(),
+			)
+			return diags
+		}
+		diags.AddError("Delete Kernel Project", err.Error())
+	}
+
+	return diags
+}
+
 func addMissingClientDiagnostic(diags *diag.Diagnostics) {
 	diags.AddError(
 		"Missing Kernel Client",
@@ -217,6 +249,11 @@ func stateProjectID(state projectModel, operation string, diags *diag.Diagnostic
 func projectCreateFailureIsDefinite(err error) bool {
 	var apiError *kernel.Error
 	return errors.As(err, &apiError) && apiError.StatusCode >= http.StatusBadRequest && apiError.StatusCode < http.StatusInternalServerError
+}
+
+func projectDeleteConflict(err error) bool {
+	var apiError *kernel.Error
+	return errors.As(err, &apiError) && apiError.StatusCode == http.StatusConflict
 }
 
 func partialProjectState(project kernel.Project, plan projectModel) projectModel {
