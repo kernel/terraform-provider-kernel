@@ -27,6 +27,27 @@ func expandProjectCreate(model projectModel) (kernel.ProjectNewParams, diag.Diag
 	}, diags
 }
 
+func expandProjectUpdate(plan, state projectModel) (kernel.ProjectUpdateParams, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if plan.Name.IsNull() || plan.Name.IsUnknown() {
+		diags.AddAttributeError(
+			path.Root("name"),
+			"Invalid Project Name",
+			"name must be known before updating a Kernel project.",
+		)
+		return kernel.ProjectUpdateParams{}, false, diags
+	}
+	if plan.Name.Equal(state.Name) {
+		return kernel.ProjectUpdateParams{}, false, diags
+	}
+
+	return kernel.ProjectUpdateParams{
+		UpdateProjectRequest: kernel.UpdateProjectRequestParam{
+			Name: kernel.String(plan.Name.ValueString()),
+		},
+	}, true, diags
+}
+
 func flattenProject(project kernel.Project) (projectModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if !validResponseString(project.JSON.ID.Raw(), project.JSON.ID.Valid(), project.ID) {

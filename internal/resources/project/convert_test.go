@@ -32,7 +32,75 @@ func TestExpandProjectCreateRejectsUnknownOrNullName(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, diags := expandProjectCreate(projectModel{Name: value})
-			assertProjectNameDiagnostic(t, diags)
+			assertProjectNameDiagnostic(t, diags, "name must be known before creating a Kernel project.")
+		})
+	}
+}
+
+func TestExpandProjectUpdateBuildsNameOnlyPatch(t *testing.T) {
+	t.Parallel()
+
+	params, changed, diags := expandProjectUpdate(
+		projectModel{Name: types.StringValue("Renamed")},
+		projectModel{Name: types.StringValue("Original")},
+	)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+	if got, want := params.UpdateProjectRequest.Name.Value, "Renamed"; got != want {
+		t.Fatalf("name = %q, want %q", got, want)
+	}
+	if !params.UpdateProjectRequest.Name.Valid() {
+		t.Fatal("name was omitted from update params")
+	}
+
+	body, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal update params: %v", err)
+	}
+	if got, want := string(body), `{"name":"Renamed"}`; got != want {
+		t.Fatalf("update body = %s, want %s", got, want)
+	}
+}
+
+func TestExpandProjectUpdateOmitsUnchangedName(t *testing.T) {
+	t.Parallel()
+
+	params, changed, diags := expandProjectUpdate(
+		projectModel{Name: types.StringValue("Project")},
+		projectModel{Name: types.StringValue("Project")},
+	)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if changed {
+		t.Fatal("changed = true, want false")
+	}
+	if params.UpdateProjectRequest.Name.Valid() {
+		t.Fatal("unchanged name was included in update params")
+	}
+}
+
+func TestExpandProjectUpdateRejectsUnknownOrNullName(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]types.String{
+		"null":    types.StringNull(),
+		"unknown": types.StringUnknown(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, changed, diags := expandProjectUpdate(
+				projectModel{Name: value},
+				projectModel{Name: types.StringValue("Project")},
+			)
+			if changed {
+				t.Fatal("changed = true, want false")
+			}
+			assertProjectNameDiagnostic(t, diags, "name must be known before updating a Kernel project.")
 		})
 	}
 }
@@ -83,7 +151,7 @@ func TestFlattenProjectRejectsInvalidDurableFields(t *testing.T) {
 	}
 }
 
-func assertProjectNameDiagnostic(t *testing.T, diags diag.Diagnostics) {
+func assertProjectNameDiagnostic(t *testing.T, diags diag.Diagnostics, wantDetail string) {
 	t.Helper()
 	if len(diags) != 1 {
 		t.Fatalf("diagnostics = %v, want one error", diags)
@@ -92,8 +160,8 @@ func assertProjectNameDiagnostic(t *testing.T, diags diag.Diagnostics) {
 	if got, want := diagnostic.Summary(), "Invalid Project Name"; got != want {
 		t.Fatalf("diagnostic summary = %q, want %q", got, want)
 	}
-	if got, want := diagnostic.Detail(), "name must be known before creating a Kernel project."; got != want {
-		t.Fatalf("diagnostic detail = %q, want %q", got, want)
+	if got := diagnostic.Detail(); got != wantDetail {
+		t.Fatalf("diagnostic detail = %q, want %q", got, wantDetail)
 	}
 	withPath, ok := diagnostic.(diag.DiagnosticWithPath)
 	if !ok || !withPath.Path().Equal(path.Root("name")) {
