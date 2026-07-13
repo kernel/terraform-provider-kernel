@@ -19,6 +19,7 @@ var _ projectClient = kernelclient.Clients{}
 type fakeProjectClient struct {
 	create func(context.Context, kernel.ProjectNewParams) (*kernel.Project, error)
 	get    func(context.Context, string) (*kernel.Project, error)
+	update func(context.Context, string, kernel.ProjectUpdateParams) (*kernel.Project, error)
 }
 
 func (f fakeProjectClient) CreateProject(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
@@ -33,6 +34,13 @@ func (f fakeProjectClient) GetProject(ctx context.Context, id string) (*kernel.P
 		return nil, errors.New("unexpected get")
 	}
 	return f.get(ctx, id)
+}
+
+func (f fakeProjectClient) UpdateProject(ctx context.Context, id string, params kernel.ProjectUpdateParams) (*kernel.Project, error) {
+	if f.update == nil {
+		return nil, errors.New("unexpected update")
+	}
+	return f.update(ctx, id, params)
 }
 
 func TestCreateProjectCreatesAndFlattensState(t *testing.T) {
