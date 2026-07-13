@@ -160,6 +160,33 @@ func TestCreateProjectReturnsDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCreateProjectReportsEveryMalformedResponseField(t *testing.T) {
+	t.Parallel()
+
+	r := newResourceWithClient(fakeProjectClient{
+		create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
+			project := projectForTest(t, `{}`)
+			return &project, nil
+		},
+	})
+
+	result, diags := r.create(context.Background(), projectModel{Name: types.StringValue("Project")})
+	if result.Status != projectCreateUncertain {
+		t.Fatalf("create status = %v, want uncertain", result.Status)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diagnostics = %v, want one uncertain-outcome error", diags)
+	}
+	for _, reason := range []string{
+		"missing or invalid field id",
+		"missing or invalid field name",
+	} {
+		if detail := diags[0].Detail(); !strings.Contains(detail, reason) {
+			t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, reason)
+		}
+	}
+}
+
 func projectAPIError(status int) *kernel.Error {
 	return &kernel.Error{
 		StatusCode: status,
