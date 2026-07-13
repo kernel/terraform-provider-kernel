@@ -42,6 +42,22 @@ func newResourceWithClient(client projectClient) *projectResource {
 	return &projectResource{client: client}
 }
 
+func projectImportState(id string) (projectModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if id == "" {
+		diags.AddError(
+			"Invalid Kernel Project Import ID",
+			"Import a Kernel project using its canonical project ID.",
+		)
+		return projectModel{}, diags
+	}
+
+	return projectModel{
+		ID:   types.StringValue(id),
+		Name: types.StringUnknown(),
+	}, diags
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
