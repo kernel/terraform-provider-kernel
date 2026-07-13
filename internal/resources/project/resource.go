@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -65,7 +66,11 @@ func (r *projectResource) create(ctx context.Context, plan projectModel) (projec
 
 	state, flattenDiags := flattenProject(*created)
 	if flattenDiags.HasError() {
-		addUncertainProjectCreateDiagnostic(&diags, plan.Name.ValueString(), flattenDiags[0].Detail())
+		reasons := make([]string, 0, len(flattenDiags))
+		for _, flattenDiag := range flattenDiags {
+			reasons = append(reasons, flattenDiag.Detail())
+		}
+		addUncertainProjectCreateDiagnostic(&diags, plan.Name.ValueString(), strings.Join(reasons, " "))
 		return projectCreateResult{
 			State:  partialProjectState(*created, plan),
 			Status: projectCreateUncertain,
