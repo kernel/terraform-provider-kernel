@@ -2,7 +2,9 @@ package project
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -52,6 +54,13 @@ func TestFrameworkCreatePersistsRecoverableIdentityBeforeUncertainDiagnostic(t *
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected uncertain-create diagnostic")
 	}
+	detail := resp.Diagnostics[0].Detail()
+	if want := `Terraform saved project ID "project_123" in state and will plan to replace this resource.`; !strings.Contains(detail, want) {
+		t.Fatalf("diagnostic detail = %q, want persisted-state guidance %q", detail, want)
+	}
+	if strings.Contains(detail, "import its canonical project ID") {
+		t.Fatalf("diagnostic detail = %q, must not recommend import for persisted state", detail)
+	}
 	state := frameworkCreateState(t, resp)
 	if got := state.ID.ValueString(); got != "project_123" {
 		t.Fatalf("state id = %q, want recoverable project_123", got)
@@ -64,21 +73,35 @@ func TestFrameworkCreatePersistsRecoverableIdentityBeforeUncertainDiagnostic(t *
 func TestFrameworkCreateLeavesNoStateWithoutRecoverableIdentity(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]func(*testing.T) (*kernel.Project, error){
-		"uncertain empty response": func(t *testing.T) (*kernel.Project, error) {
-			return nil, nil
+	tests := map[string]struct {
+		create     func(*testing.T) (*kernel.Project, error)
+		wantDetail string
+	}{
+		"uncertain empty response": {
+			create: func(t *testing.T) (*kernel.Project, error) {
+				return nil, nil
+			},
+			wantDetail: "If it exists, import its canonical project ID before applying again. If it does not exist, retry the apply.",
 		},
-		"definite API failure": func(t *testing.T) (*kernel.Project, error) {
-			return nil, projectAPIError(t, http.StatusConflict, `{"code":"conflict"}`)
+		"uncertain error without detail": {
+			create: func(t *testing.T) (*kernel.Project, error) {
+				return nil, errors.New("   ")
+			},
+			wantDetail: "Kernel returned an error without details.",
+		},
+		"definite API failure": {
+			create: func(t *testing.T) (*kernel.Project, error) {
+				return nil, projectAPIError(t, http.StatusConflict, `{"code":"conflict"}`)
+			},
 		},
 	}
 
-	for name, create := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			r := newResourceWithClient(fakeProjectClient{
 				create: func(ctx context.Context, params kernel.ProjectNewParams) (*kernel.Project, error) {
-					return create(t)
+					return test.create(t)
 				},
 			})
 			req, resp := frameworkCreateRequest(t, projectModel{Name: types.StringValue("Project")})
@@ -87,6 +110,9 @@ func TestFrameworkCreateLeavesNoStateWithoutRecoverableIdentity(t *testing.T) {
 
 			if !resp.Diagnostics.HasError() {
 				t.Fatal("expected create diagnostic")
+			}
+			if test.wantDetail != "" && !strings.Contains(resp.Diagnostics[0].Detail(), test.wantDetail) {
+				t.Fatalf("diagnostic detail = %q, want recovery guidance %q", resp.Diagnostics[0].Detail(), test.wantDetail)
 			}
 			if !resp.State.Raw.IsNull() {
 				t.Fatalf("state = %v, want absent state", resp.State.Raw)
