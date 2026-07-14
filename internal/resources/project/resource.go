@@ -9,22 +9,15 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
 
-type projectCreateStatus uint8
-
-const (
-	projectCreateFailed projectCreateStatus = iota
-	projectCreateSucceeded
-	projectCreateUncertain
-)
-
 type projectCreateResult struct {
-	State  projectModel
-	Status projectCreateStatus
+	State        projectModel
+	UncertainErr error
 }
 
 type projectClient interface {
@@ -58,31 +51,58 @@ func projectImportState(id string) (projectModel, diag.Diagnostics) {
 	}, diags
 }
 
+func (r *projectResource) Create(ctx context.Context, req tfresource.CreateRequest, resp *tfresource.CreateResponse) {
+	var plan projectModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	result, createDiags := r.create(ctx, plan)
+	resp.Diagnostics.Append(createDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if result.UncertainErr == nil {
+		resp.Diagnostics.Append(resp.State.Set(ctx, result.State)...)
+		return
+	}
+
+	projectID := result.State.ID.ValueString()
+	if projectID != "" {
+		stateDiags := resp.State.Set(ctx, result.State)
+		resp.Diagnostics.Append(stateDiags...)
+		if stateDiags.HasError() {
+			projectID = ""
+		}
+	}
+	addUncertainProjectCreateDiagnostic(&resp.Diagnostics, plan.Name.ValueString(), projectID, result.UncertainErr.Error())
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
 		addMissingClientDiagnostic(&diags)
-		return projectCreateResult{Status: projectCreateFailed}, diags
+		return projectCreateResult{}, diags
 	}
 
 	params, expandDiags := expandProjectCreate(plan)
 	diags.Append(expandDiags...)
 	if diags.HasError() {
-		return projectCreateResult{Status: projectCreateFailed}, diags
+		return projectCreateResult{}, diags
 	}
 
 	created, err := r.client.CreateProject(ctx, params)
 	if err != nil {
 		if projectCreateFailureIsDefinite(err) {
 			diags.AddError("Create Kernel Project", err.Error())
-			return projectCreateResult{Status: projectCreateFailed}, diags
+			return projectCreateResult{}, diags
 		}
-		addUncertainProjectCreateDiagnostic(&diags, plan.Name.ValueString(), err.Error())
-		return projectCreateResult{Status: projectCreateUncertain}, diags
+		return projectCreateResult{UncertainErr: err}, diags
 	}
 	if created == nil {
-		addUncertainProjectCreateDiagnostic(&diags, plan.Name.ValueString(), "Kernel returned an empty project response.")
-		return projectCreateResult{Status: projectCreateUncertain}, diags
+		return projectCreateResult{UncertainErr: errors.New("Kernel returned an empty project response.")}, diags
 	}
 
 	state, flattenDiags := flattenProject(*created)
@@ -91,24 +111,18 @@ func (r *projectResource) create(ctx context.Context, plan projectModel) (projec
 		for _, flattenDiag := range flattenDiags {
 			reasons = append(reasons, flattenDiag.Detail())
 		}
-		addUncertainProjectCreateDiagnostic(&diags, plan.Name.ValueString(), strings.Join(reasons, " "))
 		return projectCreateResult{
-			State:  partialProjectState(*created, plan),
-			Status: projectCreateUncertain,
+			State:        partialProjectState(*created, plan),
+			UncertainErr: errors.New(strings.Join(reasons, " ")),
 		}, diags
 	}
 	if !state.Name.Equal(plan.Name) {
-		addUncertainProjectCreateDiagnostic(
-			&diags,
-			plan.Name.ValueString(),
-			"Kernel returned project name "+strconv.Quote(state.Name.ValueString())+" instead of the requested name.",
-		)
 		return projectCreateResult{
-			State:  partialProjectState(*created, plan),
-			Status: projectCreateUncertain,
+			State:        partialProjectState(*created, plan),
+			UncertainErr: errors.New("Kernel returned project name " + strconv.Quote(state.Name.ValueString()) + " instead of the requested name."),
 		}, diags
 	}
-	return projectCreateResult{State: state, Status: projectCreateSucceeded}, diags
+	return projectCreateResult{State: state}, diags
 }
 
 func (r *projectResource) read(ctx context.Context, state projectModel) (projectModel, bool, diag.Diagnostics) {
@@ -282,11 +296,21 @@ func partialProjectState(project kernel.Project, plan projectModel) projectModel
 	}
 }
 
-func addUncertainProjectCreateDiagnostic(diags *diag.Diagnostics, name, reason string) {
+func addUncertainProjectCreateDiagnostic(diags *diag.Diagnostics, name, projectID, reason string) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "Kernel returned an error without details."
+	}
+
+	recovery := "Check Kernel for the project. If it exists, import its canonical project ID before applying again. If it does not exist, retry the apply."
+	if projectID != "" {
+		recovery = "Terraform saved project ID " + strconv.Quote(projectID) + " in state and will plan to replace this resource. Check the project in Kernel before applying again."
+	}
+
 	diags.AddError(
 		"Kernel Project Creation Outcome Uncertain",
 		"Kernel may have created project "+strconv.Quote(name)+", but Terraform did not receive a complete confirmation. "+
-			"Check Kernel for the project. If it exists and Terraform is not tracking it, import its project ID before applying again. "+
+			recovery+" "+
 			"Reason: "+reason,
 	)
 }
