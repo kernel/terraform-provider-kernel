@@ -100,6 +100,28 @@ func (r *projectResource) Read(ctx context.Context, req tfresource.ReadRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, nextState)...)
 }
 
+func (r *projectResource) Update(ctx context.Context, req tfresource.UpdateRequest, resp *tfresource.UpdateResponse) {
+	var plan projectModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var state projectModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	nextState, updateDiags := r.update(ctx, plan, state)
+	resp.Diagnostics.Append(updateDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, nextState)...)
+}
+
 func (r *projectResource) create(ctx context.Context, plan projectModel) (projectCreateResult, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if r.client == nil {
