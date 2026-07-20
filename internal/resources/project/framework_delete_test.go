@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -48,6 +49,9 @@ func TestFrameworkDeletePropagatesCoreDiagnostic(t *testing.T) {
 
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected delete diagnostic")
+	}
+	if detail := resp.Diagnostics[0].Detail(); !strings.Contains(detail, "connection reset") {
+		t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, "connection reset")
 	}
 }
 
