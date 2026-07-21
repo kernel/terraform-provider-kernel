@@ -159,6 +159,48 @@ func cleanupProject(t testing.TB, client projectCleaner, id string) {
 	})
 }
 
+// CleanupExtension registers a cleanup that deletes the extension from
+// projectID; empty means the env-configured default project.
+func CleanupExtension(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupExtension(t, ClientFromEnv(), projectID, id)
+}
+
+type extensionCleaner interface {
+	DefaultProjectID() string
+	DeleteExtension(context.Context, string, string) error
+}
+
+func cleanupExtension(t testing.TB, client extensionCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteExtension(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel extension %s: %v", id, err)
+		}
+	})
+}
+
 func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),
