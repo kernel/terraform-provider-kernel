@@ -169,6 +169,14 @@ func (c Clients) GetExtension(ctx context.Context, projectID, idOrName string) (
 	return c.extensions.Get(ctx, idOrName, scope(projectID)...)
 }
 
+func (c Clients) UploadExtension(ctx context.Context, projectID string, params kernel.ExtensionUploadParams) (*kernel.ExtensionUploadResponse, error) {
+	return c.extensions.Upload(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteExtension(ctx context.Context, projectID, id string) error {
+	return c.extensions.Delete(ctx, id, scope(projectID, noMutationRetries())...)
+}
+
 func (c Clients) CreateBrowserPool(ctx context.Context, projectID string, params kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error) {
 	return c.browserPools.New(ctx, params, scope(projectID, noMutationRetries())...)
 }
