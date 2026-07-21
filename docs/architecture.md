@@ -73,6 +73,12 @@ Late or conditional v1 work:
 
 Blocked candidates must remain unimplemented until the API and a tagged SDK expose the required durable contract. Provider code must not guess missing semantics, patch generated SDK code, or add a fallback HTTP client to bypass the durable client module.
 
+The accepted plaintext, import, rotation, and self-use model for API keys is
+defined in [API Key Terraform State Design](api-key-state.md). The masked data
+source may proceed after the exact-name SDK surface is tagged. The resource
+remains blocked on replayable Create/Rotate idempotency and a current-key
+rotation guard with effective authenticated project-scope metadata.
+
 `kernel_deployment` remains core v1 scope but is currently blocked until a
 tagged SDK exposes source provenance, the API supports deterministic durable
 readback, and the write-only environment/token plus metadata-only import design
