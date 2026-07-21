@@ -42,6 +42,10 @@ jobs:
           - name: Proxy data source
             package: ./internal/datasources/proxy
             project_id_required: true
+          - name: App data source
+            package: ./internal/datasources/app
+            project_id_required: true
+            app_fixture_required: true
     # Keep the job timeout above the go test timeout so Go can report the test
     # timeout before the runner stops the job. Either hard timeout can bypass
     # t.Cleanup, so release operators still inspect for leaked test resources.
@@ -64,6 +68,15 @@ jobs:
         run: |
           : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running project-scoped acceptance tests.}"
 
+      - name: Check app fixture variables
+        if: matrix.app_fixture_required
+        env:
+          KERNEL_ACC_APP_NAME: ${{ vars.KERNEL_ACC_APP_NAME }}
+          KERNEL_ACC_APP_VERSION: ${{ vars.KERNEL_ACC_APP_VERSION }}
+        run: |
+          : "${KERNEL_ACC_APP_NAME:?Set the KERNEL_ACC_APP_NAME repository variable to the release-owned running app fixture.}"
+          : "${KERNEL_ACC_APP_VERSION:?Set the KERNEL_ACC_APP_VERSION repository variable to the release-owned running app fixture.}"
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -85,4 +98,6 @@ jobs:
           KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
           KERNEL_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_PROJECT_ID || '' }}
           KERNEL_ALT_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_ALT_PROJECT_ID || '' }}
+          KERNEL_ACC_APP_NAME: ${{ matrix.app_fixture_required && vars.KERNEL_ACC_APP_NAME || '' }}
+          KERNEL_ACC_APP_VERSION: ${{ matrix.app_fixture_required && vars.KERNEL_ACC_APP_VERSION || '' }}
         run: go test -count=1 -timeout=30m -v ${{ matrix.package }} -run TestAcc
