@@ -73,6 +73,17 @@ Late or conditional v1 work:
 
 Blocked candidates must remain unimplemented until the API and a tagged SDK expose the required durable contract. Provider code must not guess missing semantics, patch generated SDK code, or add a fallback HTTP client to bypass the durable client module.
 
+`kernel_deployment` remains core v1 scope but is currently blocked until a
+tagged SDK exposes source provenance, the API supports deterministic durable
+readback, and the write-only environment/token plus metadata-only import design
+is accepted. Its current status may be exposed only as computed inspection
+metadata: it cannot be configured, drive a diff, or be populated from an event
+stream. The `kernel_deployment` data source is limited to fields returned by a
+durable deployment GET; app name, version, and actions remain the responsibility
+of the exact-lookup `kernel_app` data source until deployment reads expose them
+directly. The resource omits `force` until the API implements and tests the
+documented overwrite behavior. `kernel_app` remains lookup-only.
+
 Terraform schema and model code generation remains deferred. The current tool produced valid output but did not reduce code or review complexity, and broad OpenAPI-driven generation would further weaken the durable allowlist.
 
 The evaluation evidence and reconsideration criteria are defined in [Terraform Framework Code Generation Decision](codegen.md).
@@ -285,7 +296,13 @@ Data sources must not create, mutate, acquire, release, invoke, or recover Kerne
 
 Every resource should import by canonical ID where the API can reconstruct durable state. Project-scoped resources may also accept a documented project-qualified form when needed to resolve a non-default project.
 
-Read after import must flatten durable API state into Terraform state without introducing runtime fields. If the API cannot return create-only configuration or sensitive values, the resource must document metadata-only import or remain deferred. The provider returns a clear diagnostic instead of guessing.
+Read after import must flatten durable API state into Terraform state without
+introducing unmanaged runtime fields. Explicitly approved computed inspection
+metadata, such as deployment status, may be populated from a durable GET when
+it cannot be configured or drive diffs; event and log streams are never import
+read paths. If the API cannot return create-only configuration or sensitive
+values, the resource must document metadata-only import or remain deferred. The
+provider returns a clear diagnostic instead of guessing.
 
 ## Testing Strategy
 

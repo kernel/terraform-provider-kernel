@@ -64,11 +64,15 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 
 - Provider `api_key` remains sensitive.
 - `internal/kernelclient` exposes durable methods only; no acquire, release, flush, force-release, screenshots, logs, live view, or app invocation.
-- Every resource state contains durable desired configuration only.
+- Every resource state contains durable desired configuration plus only
+  explicitly approved, computed inspection metadata that cannot be configured
+  or drive diffs; no resource state is populated from event or log streams.
 - Every data source is lookup-only and side-effect free.
 - Project lifecycle uses organization-scoped endpoints and documents the permissions required for create, archive, and delete; if project limits are included later, their permissions receive a separate review.
 - If API key management is included, reads expose masked metadata only; plaintext-once values are sensitive, import cannot recover plaintext, and rotation/self-use semantics have explicit safety review.
-- Proxy credentials, deployment environment variables, source tokens, and other secret inputs are sensitive and preserve configured state when API reads return masked values.
+- Proxy credentials, deployment environment variables, source tokens, and
+  other secret inputs are sensitive write-only values that never enter state;
+  only explicit replacement keepers and readable masked metadata persist.
 - Browser pool read state does not include runtime counters, standby state, leased-browser state, runtime URLs, screenshots, logs, or live-view fields.
 - Delete uses `force=false`; Terraform must not terminate leased browsers as cleanup.
 - Each resource imports by canonical ID where the API can reconstruct durable state; metadata-only or unsupported imports are documented rather than guessed.
