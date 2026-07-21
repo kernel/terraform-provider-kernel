@@ -7,12 +7,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/kernel/terraform-provider-kernel/internal/datasources/extension"
+	extensiondatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/extension"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/profile"
 	projectdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/project"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/proxy"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 	"github.com/kernel/terraform-provider-kernel/internal/resources/browserpool"
+	extensionresource "github.com/kernel/terraform-provider-kernel/internal/resources/extension"
 	projectresource "github.com/kernel/terraform-provider-kernel/internal/resources/project"
 )
 
@@ -82,6 +83,7 @@ func (p *kernelProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		browserpool.NewResource,
+		extensionresource.NewResource,
 		projectresource.NewResource,
 	}
 }
@@ -91,6 +93,6 @@ func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.Da
 		projectdatasource.NewDataSource,
 		profile.NewDataSource,
 		proxy.NewDataSource,
-		extension.NewDataSource,
+		extensiondatasource.NewDataSource,
 	}
 }
