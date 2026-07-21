@@ -2,8 +2,9 @@
 
 ## Decision
 
-The masked `kernel_api_key` data source is safe to implement after a tagged
-Kernel Go SDK exposes the API's exact-name list filter.
+The masked `kernel_api_key` data source is supported. It uses the tagged Kernel
+Go SDK's paginated query filter, then enforces byte-exact name equality in the
+provider and diagnoses ambiguous names.
 
 The `kernel_api_key` resource is deferred. Its Terraform state shape is
 accepted below, but Create and Rotate must not ship until the API provides
@@ -51,9 +52,11 @@ has these properties:
 - A deleted key is hidden from ordinary Get and a repeated Delete returns
   `not_found`.
 
-The API supports an exact-name List filter. It is generated in the pending Go
-SDK v0.77.0 release, so the provider must wait for that tag rather than adding
-direct HTTP or a second client.
+The API supports substring query today and has a dedicated exact-name List
+filter pending in Go SDK v0.77.0. The data source does not require the pending
+filter: it scans every query page, post-filters names byte-for-byte, and
+deduplicates canonical IDs. The provider still uses only the tagged SDK and
+does not add direct HTTP or a second client.
 
 ## Future Resource State
 
@@ -180,9 +183,9 @@ replay contract.
 
 ## Masked Data Source
 
-The data source is independent of plaintext lifecycle and may ship first. It
-should accept exactly one of canonical `id` or exact `name`, scan all pages for
-name lookup, deduplicate by ID, and diagnose zero or multiple non-deleted
+The data source is independent of plaintext lifecycle. It accepts exactly one
+of canonical `id` or exact `name`, scans all pages for name lookup, deduplicates
+by ID, and diagnoses zero or multiple non-deleted
 matches. Expired-but-not-deleted keys remain visible because they are durable
 records under the current API status definition. The API's name filter follows
 the production database's case- and accent-insensitive collation; the provider
@@ -195,7 +198,6 @@ or provider-authentication identity.
 
 ## Unblocking Checklist
 
-- Tag an SDK release containing the exact API-key name filter.
 - Add replayable idempotency for API-key Create and Rotate.
 - Add a stable current-key/project-scope signal or coded self-rotation
   rejection plus effective-scope metadata.

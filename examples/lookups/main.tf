@@ -43,6 +43,15 @@ variable "app_version" {
   description = "Existing running Kernel app version for exact lookup."
 }
 
+variable "api_key_name" {
+  type        = string
+  description = "Existing non-deleted Kernel API key name for exact masked lookup."
+}
+
+data "kernel_api_key" "selected" {
+  name = var.api_key_name
+}
+
 data "kernel_project" "selected" {
   name = var.project_name
 }
@@ -86,6 +95,7 @@ output "kernel_ids" {
     proxy_id        = data.kernel_proxy.selected.id
     extension_id    = data.kernel_extension.selected.id
     app_id          = data.kernel_app.selected.id
+    api_key_id      = data.kernel_api_key.selected.id
     deployment_id   = data.kernel_deployment.selected.id
   }
 }

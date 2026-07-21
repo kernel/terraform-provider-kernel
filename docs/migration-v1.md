@@ -64,9 +64,10 @@ path. Managing future content replacement requires Terraform 1.11 or later plus
 
 ## Newly Available Lookups
 
-V1 adds lookup-only app and browser-pool data sources alongside project,
-profile, proxy, and extension lookups. Data sources do not adopt or mutate the
-remote object. Exact lookup fails when no object or multiple objects match.
+V1 adds lookup-only API-key, app, browser-pool, and deployment data sources
+alongside project, profile, proxy, and extension lookups. Data sources do not
+adopt or mutate the remote object. Exact lookup fails when no object or multiple
+objects match. API-key lookup returns masked metadata only.
 
 ## Deferred Surfaces
 

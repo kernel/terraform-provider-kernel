@@ -56,6 +56,7 @@ Core v1 resources:
 
 Core v1 data sources:
 
+- `kernel_api_key`
 - `kernel_project`
 - `kernel_browser_pool`
 - `kernel_profile`
@@ -67,7 +68,6 @@ Core v1 data sources:
 Late or conditional v1 work:
 
 - `kernel_proxy` resource, after write-only credential/import semantics are accepted and a tagged SDK exposes in-place rename
-- masked `kernel_api_key` metadata lookup
 - `kernel_api_key` resource, only after plaintext-once, retry, rotation, import, and provider self-use semantics are accepted
 - project limits, only after their lifecycle is clearly separate from basic project management
 
@@ -75,9 +75,10 @@ Blocked candidates must remain unimplemented until the API and a tagged SDK expo
 
 The accepted plaintext, import, rotation, and self-use model for API keys is
 defined in [API Key Terraform State Design](api-key-state.md). The masked data
-source may proceed after the exact-name SDK surface is tagged. The resource
-remains blocked on replayable Create/Rotate idempotency and a current-key
-rotation guard with effective authenticated project-scope metadata.
+source scans the tagged SDK's paginated query results and enforces byte-exact
+name equality in provider code. The resource remains blocked on replayable
+Create/Rotate idempotency and a current-key rotation guard with effective
+authenticated project-scope metadata.
 
 `kernel_deployment` remains core v1 scope but is currently blocked until a
 tagged SDK exposes source provenance, the API supports deterministic durable
