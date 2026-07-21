@@ -237,6 +237,60 @@ func TestListProxyPageReadsItemsAndNextOffset(t *testing.T) {
 	}
 }
 
+func TestListAppPageUsesExactFiltersAndPagination(t *testing.T) {
+	t.Parallel()
+
+	var requests []capturedRequest
+	clients := New(Config{
+		APIKey:  "test-api-key",
+		BaseURL: "https://api.example",
+	}, WithHTTPClient(recordingHTTPClientWithHeaders(&requests, func(req *http.Request) (string, http.Header) {
+		if req.URL.Path != "/apps" {
+			t.Fatalf("path = %q, want /apps", req.URL.Path)
+		}
+		if got, want := req.URL.Query().Get("app_name"), "demo"; got != want {
+			t.Fatalf("app_name = %q, want %q", got, want)
+		}
+		if got, want := req.URL.Query().Get("version"), "v1"; got != want {
+			t.Fatalf("version = %q, want %q", got, want)
+		}
+		if got, want := req.URL.Query().Get("limit"), "100"; got != want {
+			t.Fatalf("limit = %q, want %q", got, want)
+		}
+		if req.URL.Query().Get("offset") == "" {
+			return appListPage("app-version-1"), http.Header{"X-Next-Offset": []string{"100"}, "X-Has-More": []string{"true"}}
+		}
+		if got, want := req.URL.Query().Get("offset"), "100"; got != want {
+			t.Fatalf("offset = %q, want %q", got, want)
+		}
+		return appListPage("app-version-2"), http.Header{"X-Has-More": []string{"false"}}
+	})))
+
+	page, err := clients.ListAppPage(context.Background(), "project_123", "demo", "v1", 0)
+	if err != nil {
+		t.Fatalf("ListAppPage returned error: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "app-version-1" {
+		t.Fatalf("items = %#v, want app-version-1", page.Items)
+	}
+	if !page.HasNextPage || page.NextOffset != 100 {
+		t.Fatalf("page continuation = %v/%d, want true/100", page.HasNextPage, page.NextOffset)
+	}
+
+	page, err = clients.ListAppPage(context.Background(), "project_123", "demo", "v1", 100)
+	if err != nil {
+		t.Fatalf("ListAppPage second page returned error: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "app-version-2" || page.HasNextPage {
+		t.Fatalf("second page = %#v, want terminal app-version-2", page)
+	}
+	for index, request := range requests {
+		if got, want := request.ProjectID, "project_123"; got != want {
+			t.Fatalf("request %d project = %q, want %q", index, got, want)
+		}
+	}
+}
+
 func TestGetExtensionResolvesByIDOrNameWithinProject(t *testing.T) {
 	t.Parallel()
 
@@ -472,6 +526,10 @@ func TestClientsDoNotExposeExtensionArchiveMethods(t *testing.T) {
 			t.Fatalf("Clients exposes extension archive method %s", name)
 		}
 	}
+}
+
+func appListPage(id string) string {
+	return `[{"id":"` + id + `","app_name":"demo","version":"v1","region":"aws.us-east-1a","deployment":"deployment-1","actions":[],"env_vars":{}}]`
 }
 
 type capturedRequest struct {

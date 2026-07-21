@@ -23,6 +23,7 @@ type Page[T any] struct {
 
 type ProfilePage = Page[kernel.Profile]
 type ProxyPage = Page[kernel.ProxyListResponse]
+type AppPage = Page[kernel.AppListResponse]
 
 // Config configures the shared Kernel API clients. ProjectID is a default
 // only; the client never applies it implicitly.
@@ -38,6 +39,7 @@ type Clients struct {
 	projects         kernel.ProjectService
 	profiles         kernel.ProfileService
 	proxies          kernel.ProxyService
+	apps             kernel.AppService
 	extensions       kernel.ExtensionService
 	browserPools     kernel.BrowserPoolService
 }
@@ -67,6 +69,7 @@ func New(config Config, opts ...Option) Clients {
 		projects:         kernel.NewProjectService(requestOpts...),
 		profiles:         kernel.NewProfileService(requestOpts...),
 		proxies:          kernel.NewProxyService(requestOpts...),
+		apps:             kernel.NewAppService(requestOpts...),
 		extensions:       kernel.NewExtensionService(requestOpts...),
 		browserPools:     kernel.NewBrowserPoolService(requestOpts...),
 	}
@@ -130,6 +133,37 @@ func (c Clients) ListProxyPage(ctx context.Context, projectID string, offset int
 		HasNextPage: ok,
 	}, nil
 }
+
+func (c Clients) ListAppPage(ctx context.Context, projectID, appName, version string, offset int64) (AppPage, error) {
+	var raw *http.Response
+	params := kernel.AppListParams{
+		AppName: kernel.String(appName),
+		Version: kernel.String(version),
+		Limit:   kernel.Int(nameLookupLimit),
+	}
+	if offset > 0 {
+		params.Offset = kernel.Int(offset)
+	}
+
+	page, err := c.apps.List(ctx, params, scope(projectID, option.WithResponseInto(&raw))...)
+	if err != nil {
+		return AppPage{}, err
+	}
+	if page == nil {
+		return AppPage{}, fmt.Errorf("Kernel returned an empty app list response")
+	}
+
+	next, ok, err := lookupNextOffset(raw, offset, "app")
+	if err != nil {
+		return AppPage{}, err
+	}
+	return AppPage{
+		Items:       page.Items,
+		NextOffset:  next,
+		HasNextPage: ok,
+	}, nil
+}
+
 func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*kernel.Profile, error) {
 	return c.profiles.Get(ctx, idOrName, scope(projectID)...)
 }

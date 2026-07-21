@@ -28,6 +28,16 @@ variable "extension_name" {
   description = "Existing Kernel extension name for exact lookup."
 }
 
+variable "app_name" {
+  type        = string
+  description = "Existing running Kernel app name for exact lookup."
+}
+
+variable "app_version" {
+  type        = string
+  description = "Existing running Kernel app version for exact lookup."
+}
+
 data "kernel_project" "selected" {
   name = var.project_name
 }
@@ -47,11 +57,19 @@ data "kernel_extension" "selected" {
   project_id = data.kernel_project.selected.id
 }
 
+data "kernel_app" "selected" {
+  app_name   = var.app_name
+  version    = var.app_version
+  project_id = data.kernel_project.selected.id
+}
+
 output "kernel_ids" {
   value = {
-    project_id   = data.kernel_project.selected.id
-    profile_id   = data.kernel_profile.selected.id
-    proxy_id     = data.kernel_proxy.selected.id
-    extension_id = data.kernel_extension.selected.id
+    project_id    = data.kernel_project.selected.id
+    profile_id    = data.kernel_profile.selected.id
+    proxy_id      = data.kernel_proxy.selected.id
+    extension_id  = data.kernel_extension.selected.id
+    app_id        = data.kernel_app.selected.id
+    deployment_id = data.kernel_app.selected.deployment_id
   }
 }
