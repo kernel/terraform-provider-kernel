@@ -28,26 +28,32 @@ func TestProviderMetadata(t *testing.T) {
 	}
 }
 
-func TestProviderRegistersBrowserPoolResource(t *testing.T) {
+func TestProviderRegistersResources(t *testing.T) {
 	t.Parallel()
 
 	p := provider.New("test")()
 
 	resources := p.Resources(context.Background())
-	if len(resources) != 1 {
-		t.Fatalf("Resources length = %d, want 1", len(resources))
+	if len(resources) != 2 {
+		t.Fatalf("Resources length = %d, want 2", len(resources))
 	}
 
-	var resp tfresource.MetadataResponse
-	resources[0]().Metadata(
-		context.Background(),
-		tfresource.MetadataRequest{ProviderTypeName: "kernel"},
-		&resp,
-	)
-	if resp.TypeName != "kernel_browser_pool" {
-		t.Fatalf("resource TypeName = %q, want kernel_browser_pool", resp.TypeName)
+	got := make(map[string]bool, len(resources))
+	for _, factory := range resources {
+		var resp tfresource.MetadataResponse
+		factory().Metadata(
+			context.Background(),
+			tfresource.MetadataRequest{ProviderTypeName: "kernel"},
+			&resp,
+		)
+		got[resp.TypeName] = true
 	}
 
+	for _, want := range []string{"kernel_browser_pool", "kernel_project"} {
+		if !got[want] {
+			t.Fatalf("missing resource %s; got %v", want, got)
+		}
+	}
 }
 
 func TestProviderRegistersDataSources(t *testing.T) {
