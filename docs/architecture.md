@@ -171,6 +171,82 @@ Durable fields with server defaults use Terraform `Optional + Computed` semantic
 
 `extension_ids` is modeled as an ordered list because Kernel persists extension `load_order`.
 
+## Extension Resource Model
+
+`kernel_extension` manages an uploaded extension archive as immutable durable
+content. It does not download archives, install extensions into running
+browsers, or call the Chrome Web Store download endpoint. Upload disables SDK
+retries because the API has no idempotency key and retrying an ambiguous success
+can create a duplicate extension.
+
+The resource schema is deliberately small:
+
+- `id`: computed canonical extension ID
+- `name`: optional durable name
+- `project_id`: resolved project scope
+- `source_sha256`: SHA-256 of the exact uploaded ZIP bytes
+- `source_path`: local ZIP path used only when Terraform must upload content
+
+`source_path` is an optional write-only attribute. It is optional at the schema
+level so an imported extension does not need a local copy of its archive, but a
+resource configuration must provide it when creating or replacing an
+extension. Because Terraform never stores a write-only value in plan or state
+artifacts, `kernel_extension` requires Terraform 1.11 or later.
+
+`source_sha256` is `Optional + Computed`: normal managed configuration supplies
+`filesha256(source_path)`, while import reads the server checksum when one is
+available. Although both source attributes are schema-optional for import, a
+create or replacement requires known configured values for both `source_path`
+and `source_sha256`; omitting the checksum would make later local content
+changes invisible to Terraform. Plan validation checks only attribute presence
+and checksum format. Terraform's `filesha256` function reads the archive during
+configuration evaluation on each plan so local content changes are observable;
+the provider does not duplicate that file I/O during plan or refresh. Create
+and replacement read the write-only path from resource configuration, read at
+most 50 MiB plus one sentinel byte, reject an oversized archive, compute the
+checksum from the accepted snapshot, and give those same bytes to the SDK. A
+checksum mismatch fails before upload. Hashing and then reopening the path is
+unsafe because the file can change between reads.
+
+`name` must match `^[A-Za-z0-9._-]{1,255}$` and must not match the API's
+reserved CUID-like form `^[a-z0-9]{24}$`. The provider rejects surrounding
+whitespace instead of relying on the upload endpoint to trim it and returning
+state different from configuration.
+
+Kernel exposes no extension update endpoint. Changes to `name`, `project_id`,
+or `source_sha256` therefore replace the extension. A replacement plan also
+requires `source_path`, since the provider must upload the new durable object.
+Changing only the local path has no remote meaning and cannot itself trigger a
+replacement.
+
+Read uses the metadata endpoint and never downloads archive bytes. It excludes
+`last_used_at` because runtime browser activity changes that field, and omits
+informational `created_at` and `size_bytes` from desired resource state. A
+missing checksum is tolerated only for an imported legacy record that has no
+checksum in state; losing the checksum for provider-created or checksum-managed
+state is a refresh diagnostic because content drift can no longer be verified.
+
+Import accepts the canonical extension ID and, for non-default project scope,
+`<project-id>/<extension-id>`. Import leaves `source_path` unset and settles
+the remaining durable state through metadata Read. Because extension metadata
+does not include project identity, Read preserves an explicitly configured,
+provider-resolved, or import-qualified project scope. An unqualified import
+under the API-key-bound default leaves `project_id` unset rather than guessing.
+Subsequent replacement of an imported extension requires adding a local source
+path and checksum.
+
+An upload error after the SDK call begins is treated as an ambiguous commit.
+The provider does not retry or automatically adopt a possible match because
+the API lacks an idempotency key and storage-enforced name uniqueness. The
+diagnostic includes the project scope and expected checksum and directs the
+operator to inspect matching extensions, then import the committed extension
+or delete it before applying again.
+
+Delete uses the canonical ID. A coded `not_found` response removes the resource
+from state, while `resource_in_use` produces a diagnostic directing the user to
+remove durable browser-pool references first. Terraform does not mutate running
+browsers or perform runtime cleanup to make deletion succeed.
+
 ## Data Source Model
 
 Each data source should be lookup-only and side-effect free.
@@ -212,6 +288,11 @@ Test types:
 - unit tests for provider config and client construction
 - resource tests with fake or mocked durable client behavior where practical
 - opt-in acceptance tests gated by explicit environment variables
+
+Extension archive tests use in-memory bytes and a fake durable client. Focused
+unit tests cover the 50 MiB bound, checksum mismatch, same-snapshot upload,
+disabled SDK retries, ambiguous-commit diagnostics, and import planning without
+a local archive. Live API upload belongs only in the opt-in acceptance suite.
 
 Acceptance tests must:
 
