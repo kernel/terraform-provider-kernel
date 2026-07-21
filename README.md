@@ -133,12 +133,17 @@ Do not run `terraform init` just to exercise this unreleased provider through `d
 
 Acceptance tests are opt-in because they can create real Kernel resources.
 
-Required environment:
+Required for all acceptance tests:
 
 ```sh
 export TF_ACC=1
 export KERNEL_ACC=1
 export KERNEL_API_KEY="..."
+```
+
+Browser-pool acceptance tests additionally require:
+
+```sh
 export KERNEL_PROJECT_ID="..."
 ```
 
