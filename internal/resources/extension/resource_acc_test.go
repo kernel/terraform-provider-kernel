@@ -74,6 +74,54 @@ func TestAccExtensionLifecycle(t *testing.T) {
 	})
 }
 
+func TestAccExtensionProjectScopedImport(t *testing.T) {
+	projectID := os.Getenv(acctest.EnvAltProjectID)
+	if projectID == "" {
+		projectID = os.Getenv(acctest.EnvProjectID)
+	}
+	if projectID == "" {
+		t.Skipf("%s or %s must be set for the project-scoped extension test", acctest.EnvAltProjectID, acctest.EnvProjectID)
+	}
+
+	name := acctest.UniqueName(t, "extension-scoped")
+	sourcePath, checksum := acctest.ExtensionArchive(t, "project-scoped")
+	config := testAccExtensionProjectConfig(name, sourcePath, projectID)
+	var extensionID string
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(t) },
+		ProtoV6ProviderFactories: acctest.ProtoV6ProviderFactories(),
+		CheckDestroy:             testAccCheckExtensionDestroyed(),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCaptureExtensionID(t, extensionResourceName, &extensionID),
+					resource.TestCheckResourceAttr(extensionResourceName, "project_id", projectID),
+					resource.TestCheckResourceAttr(extensionResourceName, "source_sha256", checksum),
+				),
+			},
+			{
+				ResourceName:       extensionResourceName,
+				ImportState:        true,
+				ImportStateVerify:  true,
+				ImportStatePersist: true,
+				ImportStateIdFunc: func(state *terraform.State) (string, error) {
+					id, stateProjectID, err := extensionStateValues(state, extensionResourceName)
+					if err != nil {
+						return "", err
+					}
+					return stateProjectID + "/" + id, nil
+				},
+			},
+			{
+				Config:   config,
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func testAccExtensionConfig(name, sourcePath string) string {
 	return acctest.ProviderConfig() + fmt.Sprintf(`
 resource "kernel_extension" "test" {
@@ -82,6 +130,17 @@ resource "kernel_extension" "test" {
   source_sha256 = filesha256(%q)
 }
 `, name, sourcePath, sourcePath)
+}
+
+func testAccExtensionProjectConfig(name, sourcePath, projectID string) string {
+	return acctest.ProviderConfig() + fmt.Sprintf(`
+resource "kernel_extension" "test" {
+  name          = %[1]q
+  source_path   = %[2]q
+  source_sha256 = filesha256(%[2]q)
+  project_id    = %[3]q
+}
+`, name, sourcePath, projectID)
 }
 
 func testAccCaptureExtensionID(t *testing.T, resourceName string, extensionID *string) resource.TestCheckFunc {
