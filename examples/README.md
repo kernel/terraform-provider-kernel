@@ -4,10 +4,15 @@ These examples show durable Terraform configuration only.
 
 They do not acquire browsers, release browsers, invoke apps, fetch logs, take screenshots, open live view, upload extensions, or force-delete active runtime state.
 
-Set credentials with environment variables before running Terraform:
+Set the API credential before running Terraform:
 
 ```sh
 export KERNEL_API_KEY="..."
+```
+
+Project-scoped examples additionally require:
+
+```sh
 export KERNEL_PROJECT_ID="..."
 ```
 
