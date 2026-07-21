@@ -66,7 +66,7 @@ Core v1 data sources:
 
 Late or conditional v1 work:
 
-- `kernel_proxy` resource, after write-only credential and import semantics are accepted
+- `kernel_proxy` resource, after write-only credential/import semantics are accepted and a tagged SDK exposes in-place rename
 - masked `kernel_api_key` metadata lookup
 - `kernel_api_key` resource, only after plaintext-once, retry, rotation, import, and provider self-use semantics are accepted
 - project limits, only after their lifecycle is clearly separate from basic project management
