@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	appdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/app"
 	browserpooldatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/browserpool"
+	deploymentdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/deployment"
 	extensiondatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/extension"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/profile"
 	projectdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/project"
@@ -94,6 +95,7 @@ func (p *kernelProvider) DataSources(ctx context.Context) []func() datasource.Da
 	return []func() datasource.DataSource{
 		appdatasource.NewDataSource,
 		browserpooldatasource.NewDataSource,
+		deploymentdatasource.NewDataSource,
 		projectdatasource.NewDataSource,
 		profile.NewDataSource,
 		proxy.NewDataSource,

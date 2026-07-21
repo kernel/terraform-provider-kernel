@@ -34,6 +34,8 @@ func TestClientsSendProjectHeaderOnlyWhenExplicitlyScoped(t *testing.T) {
 			return `{"id":"profile_123","name":"Profile","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","last_used_at":"2026-01-01T00:00:00Z"}`
 		case "/proxies/proxy_123":
 			return `{"id":"proxy_123","type":"datacenter","status":"active"}`
+		case "/deployments/deployment_123", "/deployments/deployment_456":
+			return `{"id":"deployment_123","created_at":"2026-01-01T00:00:00Z","region":"aws.us-east-1a","status":"running","entrypoint_rel_path":"src/index.ts","env_vars":{},"status_reason":"","updated_at":"2026-01-01T00:00:00Z"}`
 		default:
 			t.Fatalf("unexpected path: %s", req.URL.Path)
 			return `{}`
@@ -56,6 +58,12 @@ func TestClientsSendProjectHeaderOnlyWhenExplicitlyScoped(t *testing.T) {
 	if _, err := clients.GetProxy(context.Background(), "project_123", "proxy_123"); err != nil {
 		t.Fatalf("GetProxy returned error: %v", err)
 	}
+	if _, err := clients.GetDeployment(context.Background(), "project_123", "deployment_123"); err != nil {
+		t.Fatalf("GetDeployment returned error: %v", err)
+	}
+	if _, err := clients.GetDeployment(context.Background(), "", "deployment_456"); err != nil {
+		t.Fatalf("GetDeployment returned error: %v", err)
+	}
 
 	if got, want := requests[0].ProjectID, ""; got != want {
 		t.Fatalf("org-scoped request header = %q, want %q", got, want)
@@ -77,6 +85,12 @@ func TestClientsSendProjectHeaderOnlyWhenExplicitlyScoped(t *testing.T) {
 	}
 	if got, want := requests[3].ProjectID, "project_123"; got != want {
 		t.Fatalf("scoped proxy request header = %q, want %q", got, want)
+	}
+	if got, want := requests[4].ProjectID, "project_123"; got != want {
+		t.Fatalf("scoped deployment request header = %q, want %q", got, want)
+	}
+	if got, want := requests[5].ProjectID, ""; got != want {
+		t.Fatalf("unscoped deployment request header = %q, want %q", got, want)
 	}
 }
 
@@ -578,6 +592,20 @@ func TestClientsDoNotExposeProxyHealthCheck(t *testing.T) {
 
 	if _, ok := reflect.TypeOf(Clients{}).MethodByName("CheckProxy"); ok {
 		t.Fatal("Clients exposes runtime proxy health check")
+	}
+}
+
+func TestClientsExposeDeploymentReadOnly(t *testing.T) {
+	t.Parallel()
+
+	typ := reflect.TypeOf(Clients{})
+	if _, ok := typ.MethodByName("GetDeployment"); !ok {
+		t.Fatal("Clients does not expose durable deployment lookup")
+	}
+	for _, name := range []string{"CreateDeployment", "DeleteDeployment", "FollowDeployment"} {
+		if _, ok := typ.MethodByName(name); ok {
+			t.Fatalf("Clients exposes deployment lifecycle or event method %s", name)
+		}
 	}
 }
 

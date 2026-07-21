@@ -84,11 +84,12 @@ tagged SDK exposes source provenance, the API supports deterministic durable
 readback, and the write-only environment/token plus metadata-only import design
 is accepted. Its current status may be exposed only as computed inspection
 metadata: it cannot be configured, drive a diff, or be populated from an event
-stream. The `kernel_deployment` data source is limited to fields returned by a
-durable deployment GET; app name, version, and actions remain the responsibility
-of the exact-lookup `kernel_app` data source until deployment reads expose them
-directly. The resource omits `force` until the API implements and tests the
-documented overwrite behavior. `kernel_app` remains lookup-only.
+stream. The registered `kernel_deployment` data source is limited to fields the
+tagged SDK returns from a durable deployment GET; source provenance remains
+omitted until it reaches a tagged SDK. App name, version, and actions remain the
+responsibility of the exact-lookup `kernel_app` data source until deployment
+reads expose them directly. The resource omits `force` until the API implements
+and tests the documented overwrite behavior. `kernel_app` remains lookup-only.
 
 Terraform schema and model code generation remains deferred. The current tool produced valid output but did not reduce code or review complexity, and broad OpenAPI-driven generation would further weaken the durable allowlist.
 

@@ -62,8 +62,8 @@ func TestProviderRegistersDataSources(t *testing.T) {
 	p := provider.New("test")()
 
 	dataSources := p.DataSources(context.Background())
-	if len(dataSources) != 6 {
-		t.Fatalf("DataSources length = %d, want 6", len(dataSources))
+	if len(dataSources) != 7 {
+		t.Fatalf("DataSources length = %d, want 7", len(dataSources))
 	}
 
 	got := make(map[string]bool, len(dataSources))
@@ -77,7 +77,7 @@ func TestProviderRegistersDataSources(t *testing.T) {
 		got[resp.TypeName] = true
 	}
 
-	for _, want := range []string{"kernel_app", "kernel_browser_pool", "kernel_project", "kernel_profile", "kernel_proxy", "kernel_extension"} {
+	for _, want := range []string{"kernel_app", "kernel_browser_pool", "kernel_deployment", "kernel_project", "kernel_profile", "kernel_proxy", "kernel_extension"} {
 		if !got[want] {
 			t.Fatalf("missing data source %s; got %v", want, got)
 		}
