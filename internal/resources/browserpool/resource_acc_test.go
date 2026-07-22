@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -19,6 +18,9 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 	var poolID string
 
 	updatedConfig := testAccBrowserPoolConfig(name, "https://example.com/two")
+	capturePoolID := acctest.CaptureResourceID(t, browserPoolResourceName, &poolID, func(id string, attributes map[string]string) {
+		acctest.CleanupBrowserPool(t, attributes["project_id"], id)
+	})
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(t)
@@ -29,7 +31,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 			{
 				Config: testAccBrowserPoolConfig(name, "https://example.com/one"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCaptureBrowserPoolID(t, browserPoolResourceName, &poolID),
+					capturePoolID,
 					testAccCheckBrowserPoolProject(browserPoolResourceName, os.Getenv(acctest.EnvProjectID)),
 					resource.TestCheckResourceAttrSet(browserPoolResourceName, "id"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "name", name),
@@ -45,7 +47,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 			{
 				Config: updatedConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCaptureBrowserPoolID(t, browserPoolResourceName, &poolID),
+					capturePoolID,
 					testAccCheckBrowserPoolID(browserPoolResourceName, &poolID),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "name", name),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "size", "1"),
@@ -80,6 +82,9 @@ func TestAccBrowserPoolProjectScoped(t *testing.T) {
 	var poolID string
 
 	config := testAccBrowserPoolProjectConfig(name, projectID)
+	capturePoolID := acctest.CaptureResourceID(t, browserPoolResourceName, &poolID, func(id string, attributes map[string]string) {
+		acctest.CleanupBrowserPool(t, attributes["project_id"], id)
+	})
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(t)
@@ -90,7 +95,7 @@ func TestAccBrowserPoolProjectScoped(t *testing.T) {
 			{
 				Config: config,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCaptureBrowserPoolID(t, browserPoolResourceName, &poolID),
+					capturePoolID,
 					resource.TestCheckResourceAttr(browserPoolResourceName, "project_id", projectID),
 				),
 			},
@@ -139,25 +144,6 @@ resource "kernel_browser_pool" "test" {
 `, name, startURL)
 }
 
-func testAccCaptureBrowserPoolID(t *testing.T, resourceName string, poolID *string) resource.TestCheckFunc {
-	t.Helper()
-
-	return func(state *terraform.State) error {
-		id, projectID, err := browserPoolStateValues(state, resourceName)
-		if err != nil {
-			return err
-		}
-		if *poolID != "" && *poolID != id {
-			return fmt.Errorf("Kernel browser pool ID changed from %s to %s", *poolID, id)
-		}
-		if *poolID == "" {
-			*poolID = id
-			acctest.CleanupBrowserPool(t, projectID, id)
-		}
-		return nil
-	}
-}
-
 func testAccCheckBrowserPoolProject(resourceName, want string) resource.TestCheckFunc {
 	return func(state *terraform.State) error {
 		_, projectID, err := browserPoolStateValues(state, resourceName)
@@ -185,36 +171,20 @@ func testAccCheckBrowserPoolID(resourceName string, poolID *string) resource.Tes
 }
 
 func testAccCheckBrowserPoolDestroyed() resource.TestCheckFunc {
-	return func(state *terraform.State) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		client := acctest.ClientFromEnv()
-		for _, resourceState := range state.RootModule().Resources {
-			if resourceState.Type != "kernel_browser_pool" || resourceState.Primary == nil || resourceState.Primary.ID == "" {
-				continue
-			}
-
-			_, err := client.GetBrowserPool(ctx, resourceState.Primary.Attributes["project_id"], resourceState.Primary.ID)
-			if acctest.IsNotFound(err) {
-				continue
-			}
-			if err != nil {
-				return fmt.Errorf("read Kernel browser pool %s after destroy: %w", resourceState.Primary.ID, err)
-			}
-			return fmt.Errorf("Kernel browser pool %s still exists after destroy", resourceState.Primary.ID)
-		}
-		return nil
-	}
+	return acctest.CheckResourceDestroyed(
+		"kernel_browser_pool",
+		func(ctx context.Context, id string, attributes map[string]string) error {
+			client := acctest.ClientFromEnv()
+			_, err := client.GetBrowserPool(ctx, attributes["project_id"], id)
+			return err
+		},
+	)
 }
 
 func browserPoolStateValues(state *terraform.State, resourceName string) (id, projectID string, err error) {
-	resourceState, ok := state.RootModule().Resources[resourceName]
-	if !ok {
-		return "", "", fmt.Errorf("missing resource %s in Terraform state", resourceName)
+	id, attributes, err := acctest.ResourceStateValues(state, resourceName)
+	if err != nil {
+		return "", "", err
 	}
-	if resourceState.Primary == nil || resourceState.Primary.ID == "" {
-		return "", "", fmt.Errorf("missing ID for %s in Terraform state", resourceName)
-	}
-	return resourceState.Primary.ID, resourceState.Primary.Attributes["project_id"], nil
+	return id, attributes["project_id"], nil
 }
