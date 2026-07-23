@@ -124,6 +124,41 @@ func cleanupBrowserPool(t testing.TB, client browserPoolCleaner, projectID, id s
 	})
 }
 
+func CleanupProject(t testing.TB, id string) {
+	t.Helper()
+
+	cleanupProject(t, ClientFromEnv(), id)
+}
+
+type projectCleaner interface {
+	DeleteProject(context.Context, string) error
+}
+
+func cleanupProject(t testing.TB, client projectCleaner, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteProject(ctx, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel project %s: %v", id, err)
+		}
+	})
+}
+
 func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),
