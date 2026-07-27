@@ -134,6 +134,14 @@ func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*k
 	return c.profiles.Get(ctx, idOrName, scope(projectID)...)
 }
 
+func (c Clients) CreateProfile(ctx context.Context, projectID string, params kernel.ProfileNewParams) (*kernel.Profile, error) {
+	return c.profiles.New(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteProfile(ctx context.Context, projectID, idOrName string) error {
+	return c.profiles.Delete(ctx, idOrName, scope(projectID, noMutationRetries())...)
+}
+
 func (c Clients) ListProfilePage(ctx context.Context, projectID, query string, offset int64) (ProfilePage, error) {
 	var raw *http.Response
 	params := kernel.ProfileListParams{
