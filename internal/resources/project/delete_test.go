@@ -45,12 +45,66 @@ func TestDeleteProjectTreatsCodedNotFoundAsSuccess(t *testing.T) {
 	}
 }
 
-func TestDeleteProjectExplainsConflictWithoutForcingChildren(t *testing.T) {
+func TestDeleteProjectExplainsLifecycleConflictsWithoutForcingChildren(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		code    string
+		message string
+	}{
+		"last active project": {
+			code:    "last_active_project",
+			message: "organization must have at least one project",
+		},
+		"project not empty": {
+			code:    "project_not_empty",
+			message: "project still has active resources",
+		},
+		"legacy conflict": {
+			code:    "conflict",
+			message: "project cannot be deleted",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			deleteErr := projectAPIError(t, http.StatusConflict, `{"code":"`+test.code+`","message":"`+test.message+`"}`)
+			r := newResourceWithClient(fakeProjectClient{
+				delete: func(ctx context.Context, id string) error {
+					return deleteErr
+				},
+			})
+
+			diags := r.delete(context.Background(), projectModel{ID: types.StringValue("project_123")})
+			if len(diags) != 1 {
+				t.Fatalf("diagnostics = %v, want one error", diags)
+			}
+			if got := diags[0].Summary(); got != "Delete Kernel Project" {
+				t.Fatalf("diagnostic summary = %q, want Delete Kernel Project", got)
+			}
+			detail := diags[0].Detail()
+			for _, want := range []string{
+				"must have no active resources",
+				"retain at least one active project",
+				"will not delete child resources implicitly",
+				"409 Conflict",
+			} {
+				if !strings.Contains(detail, want) {
+					t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, want)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteProjectDoesNotTreatProjectsDisabledAsSuccess(t *testing.T) {
 	t.Parallel()
 
 	r := newResourceWithClient(fakeProjectClient{
 		delete: func(ctx context.Context, id string) error {
-			return projectAPIError(t, http.StatusConflict, `{"code":"conflict","message":"project still has active resources"}`)
+			return projectAPIError(t, http.StatusNotFound, `{"code":"projects_disabled","message":"projects are disabled for this organization"}`)
 		},
 	})
 
@@ -61,16 +115,8 @@ func TestDeleteProjectExplainsConflictWithoutForcingChildren(t *testing.T) {
 	if got := diags[0].Summary(); got != "Delete Kernel Project" {
 		t.Fatalf("diagnostic summary = %q, want Delete Kernel Project", got)
 	}
-	detail := diags[0].Detail()
-	for _, want := range []string{
-		"must have no active resources",
-		"retain at least one active project",
-		"will not delete child resources implicitly",
-		"409 Conflict",
-	} {
-		if !strings.Contains(detail, want) {
-			t.Fatalf("diagnostic detail = %q, want it to contain %q", detail, want)
-		}
+	if detail := diags[0].Detail(); !strings.Contains(detail, "404 Not Found") {
+		t.Fatalf("diagnostic detail = %q, want it to contain 404 Not Found", detail)
 	}
 }
 

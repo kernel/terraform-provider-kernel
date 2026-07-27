@@ -60,6 +60,10 @@ func TestReadProjectRemovesStateOnlyForCodedNotFound(t *testing.T) {
 			err:       projectAPIError(t, http.StatusNotFound, `{}`),
 			wantError: true,
 		},
+		"projects disabled": {
+			err:       projectAPIError(t, http.StatusNotFound, `{"code":"projects_disabled","message":"projects are disabled for this organization"}`),
+			wantError: true,
+		},
 		"transport error": {
 			err:       errors.New("connection reset"),
 			wantError: true,
