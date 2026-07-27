@@ -103,6 +103,14 @@ func (c Clients) GetProxy(ctx context.Context, projectID, id string) (*kernel.Pr
 	return c.proxies.Get(ctx, id, scope(projectID)...)
 }
 
+func (c Clients) CreateProxy(ctx context.Context, projectID string, params kernel.ProxyNewParams) (*kernel.ProxyNewResponse, error) {
+	return c.proxies.New(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteProxy(ctx context.Context, projectID, id string) error {
+	return c.proxies.Delete(ctx, id, scope(projectID, noMutationRetries())...)
+}
+
 func (c Clients) ListProxyPage(ctx context.Context, projectID string, offset int64) (ProxyPage, error) {
 	var raw *http.Response
 	params := kernel.ProxyListParams{
