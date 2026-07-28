@@ -33,6 +33,8 @@ func (f fakeExtensionRecoveryClient) GetExtension(ctx context.Context, projectID
 }
 
 func TestExtensionArchiveFixture(t *testing.T) {
+	t.Parallel()
+
 	archive := testAccExtensionArchive(t)
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
@@ -47,6 +49,8 @@ func TestExtensionArchiveFixture(t *testing.T) {
 }
 
 func TestRecoverExtensionFixture(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		extension *kernel.ExtensionGetResponse
 		getErr    error
