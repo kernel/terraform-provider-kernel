@@ -1,6 +1,7 @@
 name: Acceptance
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,6 +14,10 @@ concurrency:
 jobs:
   durable-resource:
     name: ${{ matrix.name }} acceptance
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
