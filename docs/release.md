@@ -12,15 +12,13 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run `terraform fmt -check -recursive examples`.
 - Run `go test -short -timeout=2m ./...`.
 - Run `go vet ./...`.
-- Run the complete opt-in acceptance matrix for every v1 resource and data source with real credentials before the first public release.
-  - Browser pools: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`.
-  - Projects: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc`.
-  - The manual `Acceptance` workflow runs both packages in parallel; expand its matrix as v1 resources land and keep live tests out of normal PR CI.
+- Run the complete [selected-surface acceptance matrix](acceptance.md) with real credentials against the release commit.
+  - The manual `Acceptance` workflow runs all six packages as independent matrix jobs. Keep live tests out of normal pull-request CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
-    1. In the Kernel dashboard or durable API, find projects and browser pools named `kernel-tf-*` that were created during the failed workflow run.
-    2. Delete leaked browser pools first with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.
-    3. Delete a leaked project only after its child resources are gone and the organization still has another active project.
-    4. Read each canonical resource ID and require a 404 before considering cleanup complete.
+    1. In the Kernel dashboard or durable API, find projects, browser pools, profiles, proxies, and extensions named `kernel-tf-*` that were created during the failed workflow run.
+    2. Delete leaked browser pools with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.
+    3. Delete other leaked project-scoped fixtures, then delete a leaked project only after its child resources are gone and the organization still has another active project.
+    4. Read each canonical ID and require the expected not-found response before considering cleanup complete.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
 - Confirm the repository license before the first public release. Do not publish a public tag until `LICENSE` exists or the release owner has explicitly documented the licensing decision.
