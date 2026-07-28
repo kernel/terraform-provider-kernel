@@ -46,14 +46,15 @@ func TestAccProjectLifecycle(t *testing.T) {
 				PlanOnly: true,
 			},
 			{
-				ResourceName:       projectResourceName,
-				ImportState:        true,
-				ImportStateVerify:  true,
-				ImportStatePersist: true,
+				ResourceName:      projectResourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 			{
-				Config:   updatedConfig,
-				PlanOnly: true,
+				Config:          updatedConfig,
+				ResourceName:    projectResourceName,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 		},
 	})
