@@ -28,8 +28,9 @@ Read-only data sources:
 - `kernel_extension`
 
 Managed resources support durable lifecycle operations and canonical import.
-Data sources perform exact lookups without adopting or modifying the remote
-object.
+ID and name selectors perform exact lookups. The project data source can also
+resolve the provider-default project. Data sources never adopt or modify remote
+objects.
 
 ## Adopt Existing Objects
 
