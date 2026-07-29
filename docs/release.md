@@ -15,7 +15,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Run the complete acceptance matrix for every v1 resource and data source with real credentials before the first public release.
   - Browser pools: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... KERNEL_PROJECT_ID=... go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc`.
   - Projects: `TF_ACC=1 KERNEL_ACC=1 KERNEL_API_KEY=... go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc`.
-  - The `Acceptance` workflow runs both packages in parallel for trusted same-repository pull requests and supports manual dispatch. Fork and Dependabot pull requests are skipped because they do not receive repository secrets.
+  - The `Acceptance` workflow runs both packages in parallel after changes reach `main` and supports manual dispatch. Keep live acceptance tests out of pull-request CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
     1. In the Kernel dashboard or durable API, find projects and browser pools named `kernel-tf-*` that were created during the failed workflow run.
     2. Delete leaked browser pools first with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.
