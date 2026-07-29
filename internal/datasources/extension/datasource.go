@@ -31,12 +31,11 @@ type extensionDataSource struct {
 }
 
 type extensionModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	ProjectID  types.String `tfsdk:"project_id"`
-	CreatedAt  types.String `tfsdk:"created_at"`
-	SizeBytes  types.Int64  `tfsdk:"size_bytes"`
-	LastUsedAt types.String `tfsdk:"last_used_at"`
+	ID        types.String `tfsdk:"id"`
+	Name      types.String `tfsdk:"name"`
+	ProjectID types.String `tfsdk:"project_id"`
+	CreatedAt types.String `tfsdk:"created_at"`
+	SizeBytes types.Int64  `tfsdk:"size_bytes"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -79,10 +78,6 @@ func (d *extensionDataSource) Schema(ctx context.Context, req datasource.SchemaR
 			"size_bytes": dschema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Extension archive size in bytes.",
-			},
-			"last_used_at": dschema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "Timestamp the extension was last used, if ever.",
 			},
 		},
 	}
@@ -209,26 +204,15 @@ func flattenExtension(extension kernel.ExtensionGetResponse) (extensionModel, di
 		}
 	}
 
-	// last_used_at is nullable (an extension that has never been used); a null
-	// reads as not-present via FieldPresent, leaving the attribute null.
-	lastUsedAt := types.StringNull()
-	if datasources.FieldPresent(extension.JSON.LastUsedAt.Raw()) {
-		if !datasources.ValidResponseTime(extension.JSON.LastUsedAt.Raw(), extension.JSON.LastUsedAt.Valid(), extension.LastUsedAt) {
-			datasources.AddInvalidResponseField(&diags, "Extension", "last_used_at")
-		} else {
-			lastUsedAt = types.StringValue(extension.LastUsedAt.Format(time.RFC3339Nano))
-		}
-	}
 	if diags.HasError() {
 		return extensionModel{}, diags
 	}
 
 	return extensionModel{
-		ID:         types.StringValue(extension.ID),
-		Name:       name,
-		CreatedAt:  types.StringValue(extension.CreatedAt.Format(time.RFC3339Nano)),
-		SizeBytes:  types.Int64Value(extension.SizeBytes),
-		LastUsedAt: lastUsedAt,
+		ID:        types.StringValue(extension.ID),
+		Name:      name,
+		CreatedAt: types.StringValue(extension.CreatedAt.Format(time.RFC3339Nano)),
+		SizeBytes: types.Int64Value(extension.SizeBytes),
 	}, diags
 }
 

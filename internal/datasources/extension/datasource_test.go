@@ -115,12 +115,12 @@ func TestDataSourceMetadataAndSchema(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "created_at", "size_bytes", "last_used_at"} {
+	for _, name := range []string{"id", "name", "created_at", "size_bytes"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s attribute", name)
 		}
 	}
-	for _, name := range []string{"download_url", "zip_file"} {
+	for _, name := range []string{"download_url", "zip_file", "last_used_at"} {
 		if _, ok := schema.Schema.Attributes[name]; ok {
 			t.Fatalf("schema should not include %s", name)
 		}
@@ -167,9 +167,6 @@ func TestReadSetsTerraformState(t *testing.T) {
 	}
 	if state.SizeBytes.ValueInt64() != 1234 {
 		t.Fatalf("state size_bytes = %d, want 1234", state.SizeBytes.ValueInt64())
-	}
-	if state.LastUsedAt.ValueString() != "2026-06-05T12:00:00Z" {
-		t.Fatalf("state last_used_at = %q, want 2026-06-05T12:00:00Z", state.LastUsedAt.ValueString())
 	}
 }
 
@@ -234,24 +231,6 @@ func TestReadExtensionAllowsNullableName(t *testing.T) {
 	}
 	if !state.Name.IsNull() {
 		t.Fatalf("state name = %q, want null", state.Name.ValueString())
-	}
-}
-
-func TestReadExtensionAllowsNullableLastUsedAt(t *testing.T) {
-	t.Parallel()
-
-	ds := newDataSourceWithClient(fakeExtensionClient{
-		get: func(ctx context.Context, projectID, idOrName string) (*kernel.ExtensionGetResponse, error) {
-			return extensionWithoutLastUsedForTest("extension-1", "Extension"), nil
-		},
-	})
-
-	state, diags := ds.read(context.Background(), extensionModel{ID: types.StringValue("extension-1")})
-	if diags.HasError() {
-		t.Fatalf("unexpected diagnostics: %v", diags)
-	}
-	if !state.LastUsedAt.IsNull() {
-		t.Fatalf("state last_used_at = %q, want null", state.LastUsedAt.ValueString())
 	}
 }
 
@@ -339,10 +318,6 @@ func extensionWithoutNameForTest(id string) *kernel.ExtensionGetResponse {
 	return extensionFromJSON(`{"id":"` + id + `","name":null,"created_at":"2026-06-05T12:00:00Z","size_bytes":1234,"last_used_at":"2026-06-05T12:00:00Z"}`)
 }
 
-func extensionWithoutLastUsedForTest(id, name string) *kernel.ExtensionGetResponse {
-	return extensionFromJSON(`{"id":"` + id + `","name":"` + name + `","created_at":"2026-06-05T12:00:00Z","size_bytes":1234,"last_used_at":null}`)
-}
-
 func invalidExtension() *kernel.ExtensionGetResponse {
 	extension := extensionForTest("extension-1", "Extension")
 	extension.CreatedAt = time.Time{}
@@ -362,21 +337,19 @@ func extensionConfigValue(id, name tftypes.Value) tftypes.Value {
 	return tftypes.NewValue(
 		tftypes.Object{
 			AttributeTypes: map[string]tftypes.Type{
-				"id":           tftypes.String,
-				"name":         tftypes.String,
-				"project_id":   tftypes.String,
-				"created_at":   tftypes.String,
-				"size_bytes":   tftypes.Number,
-				"last_used_at": tftypes.String,
+				"id":         tftypes.String,
+				"name":       tftypes.String,
+				"project_id": tftypes.String,
+				"created_at": tftypes.String,
+				"size_bytes": tftypes.Number,
 			},
 		},
 		map[string]tftypes.Value{
-			"id":           id,
-			"name":         name,
-			"project_id":   tftypes.NewValue(tftypes.String, nil),
-			"created_at":   tftypes.NewValue(tftypes.String, nil),
-			"size_bytes":   tftypes.NewValue(tftypes.Number, nil),
-			"last_used_at": tftypes.NewValue(tftypes.String, nil),
+			"id":         id,
+			"name":       name,
+			"project_id": tftypes.NewValue(tftypes.String, nil),
+			"created_at": tftypes.NewValue(tftypes.String, nil),
+			"size_bytes": tftypes.NewValue(tftypes.Number, nil),
 		},
 	)
 }

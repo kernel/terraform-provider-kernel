@@ -24,5 +24,4 @@ Lookup durable Kernel extension metadata.
 ### Read-Only
 
 - `created_at` (String) Extension creation timestamp.
-- `last_used_at` (String) Timestamp the extension was last used, if ever.
 - `size_bytes` (Number) Extension archive size in bytes.
