@@ -201,6 +201,48 @@ func cleanupProfile(t testing.TB, client profileCleaner, projectID, id string) {
 	})
 }
 
+// CleanupProxy registers a cleanup that deletes the proxy from projectID;
+// empty means the env-configured default project.
+func CleanupProxy(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupProxy(t, ClientFromEnv(), projectID, id)
+}
+
+type proxyCleaner interface {
+	DefaultProjectID() string
+	DeleteProxy(context.Context, string, string) error
+}
+
+func cleanupProxy(t testing.TB, client proxyCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteProxy(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel proxy %s: %v", id, err)
+		}
+	})
+}
+
 func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),
