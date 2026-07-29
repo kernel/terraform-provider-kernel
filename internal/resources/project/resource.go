@@ -338,8 +338,6 @@ func (r *projectResource) delete(ctx context.Context, state projectModel) diag.D
 	}
 
 	if err := r.client.DeleteProject(ctx, id); err != nil {
-		// Kernel also uses not_found when projects are disabled. Terraform still
-		// treats it as absence because the API provides no distinguishable signal.
 		if projectscope.IsNotFound(err) {
 			return diags
 		}
