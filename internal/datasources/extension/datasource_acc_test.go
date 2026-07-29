@@ -176,15 +176,22 @@ func testAccUploadExtensionFixture(t *testing.T, projectID, name string, archive
 		Name: kernel.String(name),
 	})
 	if err != nil {
-		recoveryErr := testAccRecoverAndTrackExtensionFixture(t, projectID, name)
+		recoveredID, recoveryErr := testAccRecoverAndTrackExtensionFixture(t, projectID, name)
 		if recoveryErr != nil {
 			t.Fatalf("upload Kernel extension fixture: %v; recover fixture by name: %v", err, recoveryErr)
+		}
+		if recoveredID != "" {
+			return recoveredID
 		}
 		t.Fatalf("upload Kernel extension fixture: %v", err)
 	}
 	if extension == nil || extension.ID == "" {
-		if recoveryErr := testAccRecoverAndTrackExtensionFixture(t, projectID, name); recoveryErr != nil {
+		recoveredID, recoveryErr := testAccRecoverAndTrackExtensionFixture(t, projectID, name)
+		if recoveryErr != nil {
 			t.Fatalf("Kernel returned an empty extension fixture response; recover fixture by name: %v", recoveryErr)
+		}
+		if recoveredID != "" {
+			return recoveredID
 		}
 		t.Fatal("Kernel returned an empty extension fixture response")
 	}
@@ -200,14 +207,15 @@ func testAccUploadExtensionFixture(t *testing.T, projectID, name string, archive
 	return extension.ID
 }
 
-func testAccRecoverAndTrackExtensionFixture(t *testing.T, projectID, name string) error {
+func testAccRecoverAndTrackExtensionFixture(t *testing.T, projectID, name string) (string, error) {
 	t.Helper()
 
 	recovered, err := testAccRecoverExtensionFixture(acctest.ClientFromEnv(), projectID, name)
-	if recovered != nil {
-		testAccTrackExtensionFixture(t, projectID, recovered.ID)
+	if err != nil || recovered == nil {
+		return "", err
 	}
-	return err
+	testAccTrackExtensionFixture(t, projectID, recovered.ID)
+	return recovered.ID, nil
 }
 
 func testAccRecoverExtensionFixture(client extensionRecoveryClient, projectID, name string) (*kernel.ExtensionGetResponse, error) {
