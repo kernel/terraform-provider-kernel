@@ -125,6 +125,7 @@ func TestReadProjectRejectsInvalidResponses(t *testing.T) {
 
 	tests := map[string]struct {
 		get        func(*testing.T, context.Context, string) (*kernel.Project, error)
+		stateID    string
 		wantDetail string
 	}{
 		"empty response": {
@@ -142,22 +143,32 @@ func TestReadProjectRejectsInvalidResponses(t *testing.T) {
 		},
 		"mismatched id": {
 			get: func(t *testing.T, ctx context.Context, id string) (*kernel.Project, error) {
+				if id != "Production" {
+					t.Fatalf("GetProject id = %q, want imported name", id)
+				}
 				project := projectForTest(t, `{"id":"project_other","name":"Project"}`)
 				return &project, nil
 			},
-			wantDetail: `returned project id "project_other" while reading "project_123"`,
+			stateID: "Production",
+			wantDetail: `returned canonical project ID "project_other" while reading Terraform state ID "Production". ` +
+				`If this project was imported by name, remove its existing Terraform state entry, then import it again using canonical project ID "project_other". ` +
+				`Terraform preserved the existing state.`,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			stateID := test.stateID
+			if stateID == "" {
+				stateID = "project_123"
+			}
 			r := newResourceWithClient(fakeProjectClient{
 				get: func(ctx context.Context, id string) (*kernel.Project, error) {
 					return test.get(t, ctx, id)
 				},
 			})
-			_, removed, diags := r.read(context.Background(), projectModel{ID: types.StringValue("project_123")})
+			_, removed, diags := r.read(context.Background(), projectModel{ID: types.StringValue(stateID)})
 			if removed {
 				t.Fatal("removed = true, want false")
 			}

@@ -255,10 +255,13 @@ func (r *projectResource) read(ctx context.Context, state projectModel) (project
 	if diags.HasError() {
 		return projectModel{}, false, diags
 	}
-	if nextState.ID.ValueString() != id {
+	canonicalID := nextState.ID.ValueString()
+	if canonicalID != id {
 		diags.AddError(
 			"Invalid Kernel Project Response",
-			"Kernel returned project id "+strconv.Quote(nextState.ID.ValueString())+" while reading "+strconv.Quote(id)+".",
+			"Kernel returned canonical project ID "+strconv.Quote(canonicalID)+" while reading Terraform state ID "+strconv.Quote(id)+". "+
+				"If this project was imported by name, remove its existing Terraform state entry, then import it again using canonical project ID "+strconv.Quote(canonicalID)+". "+
+				"Terraform preserved the existing state.",
 		)
 		return projectModel{}, false, diags
 	}
