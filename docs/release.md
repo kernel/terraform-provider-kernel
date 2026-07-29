@@ -4,7 +4,8 @@ Use this checklist before publishing a Kernel Terraform provider version.
 
 ## Release Preconditions
 
-- The first public release ships as a complete v1. v0 tags and release artifacts stay internal to the Kernel organization; do not publish v0 to the public Terraform Registry.
+- The repository has no published provider tags. Present v1 as the first public release, not as an upgrade or migration from v0.
+- Review the [first public release guide](first-release.md) and include its supported-surface and import guidance in the release notes.
 - Work from a clean `main` checkout after the PR stack is merged.
 - Run `bash scripts/check-docs.sh`.
 - Run `bash scripts/check-markdown-links.sh`.

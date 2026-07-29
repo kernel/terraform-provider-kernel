@@ -86,6 +86,9 @@ terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
 terraform import kernel_project.example <project-id>
 ```
 
+See the [first public release guide](docs/first-release.md) for the exact public
+surface and for adopting existing Kernel projects or browser pools.
+
 ## Local Development
 
 Build the provider:
