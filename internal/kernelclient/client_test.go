@@ -333,6 +333,23 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 				return clients.DeleteProject(ctx, "project_123")
 			},
 		},
+		"profile create": {
+			method:    http.MethodPost,
+			path:      "/profiles",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateProfile(ctx, "project_123", kernel.ProfileNewParams{Name: kernel.String("Profile")})
+				return err
+			},
+		},
+		"profile delete": {
+			method:    http.MethodDelete,
+			path:      "/profiles/profile_123",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteProfile(ctx, "project_123", "profile_123")
+			},
+		},
 		"browser pool create": {
 			method:    http.MethodPost,
 			path:      "/browser_pools",
@@ -440,6 +457,14 @@ func TestClientsDoNotExposeRuntimeBrowserPoolMethods(t *testing.T) {
 		if _, ok := typ.MethodByName(name); ok {
 			t.Fatalf("Clients exposes runtime method %s", name)
 		}
+	}
+}
+
+func TestClientsDoNotExposeProfileArchiveMethods(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := reflect.TypeOf(Clients{}).MethodByName("DownloadProfile"); ok {
+		t.Fatal("Clients exposes profile archive download")
 	}
 }
 
