@@ -61,10 +61,13 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
   platforms, checksums, manifest inclusion, and checksum signing.
 - Normal CI validates the GoReleaser configuration and registry manifest without
   building the complete platform matrix.
-- Run the unsigned snapshot as a release precondition.
+- `.github/workflows/release.yml` prepares unsigned, unpublished assets for
+  stable `vMAJOR.MINOR.PATCH` tags after confirming the repository is public
+  and the tag commit is reachable from `main`. It pins GoReleaser to the pushed
+  tag, verifies the release contract, and retains the assets for seven days.
 - Real releases sign the checksum file once with the GPG key selected by
   `GPG_FINGERPRINT`. The detached signature is named by appending `.sig` to the
-  checksum filename. Register the matching public key in the Terraform Registry.
+  checksum filename. Publication remains a separate release step.
 
 ## Registry Setup
 
