@@ -1,8 +1,8 @@
 # Selected-Surface Acceptance Matrix
 
 This document is the live-API release gate for the provider's selected public
-surface. Unit tests remain the fast default. Acceptance tests run only through
-explicit local opt-in or the manual GitHub Actions workflow.
+surface. Unit tests remain the fast default. Acceptance tests run after changes
+reach `main`, through explicit local opt-in, or by manual workflow dispatch.
 
 The selected surface contains two managed resources and four read-only data
 sources. It does not claim coverage for future or unregistered Kernel objects.
@@ -59,8 +59,8 @@ go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 ```
 
-The manual `Acceptance` workflow runs the same six packages as separate matrix
-jobs with `fail-fast: false`. Live acceptance remains a manual pre-tag gate.
+The `Acceptance` workflow runs the same six packages as separate matrix jobs
+with `fail-fast: false` after changes reach `main` and on manual dispatch.
 
 ## Outside The Selected Surface
 

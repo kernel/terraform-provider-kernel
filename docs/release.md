@@ -19,7 +19,7 @@ Use this checklist before publishing a Kernel Terraform provider version.
   checks each archive, and verifies checksum coverage. A snapshot skips signing
   and is not a publishable release.
 - Run the complete [selected-surface acceptance matrix](acceptance.md) with real credentials against the release commit.
-  - The manual `Acceptance` workflow runs all six packages as independent matrix jobs. Keep live tests out of normal pull-request CI.
+  - The `Acceptance` workflow runs all six packages as independent matrix jobs after changes reach `main` and supports manual dispatch. Keep live tests out of pull-request CI.
   - Process-level timeouts can bypass Go test cleanup. After an interrupted or hard-timeout run:
     1. In the Kernel dashboard or durable API, find projects, browser pools, profiles, proxies, and extensions named `kernel-tf-*` that were created during the failed workflow run.
     2. Delete leaked browser pools with `force=false`. If deletion conflicts with a lease, wait for the lease to end; do not force-release or recover the browser from Terraform cleanup.

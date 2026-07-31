@@ -134,7 +134,9 @@ Do not run `terraform init` just to exercise this unreleased provider through `d
 
 ## Acceptance Tests
 
-Acceptance tests are opt-in because they can create real Kernel resources.
+Acceptance tests run automatically after changes reach `main` and can also be
+started manually through the `Acceptance` workflow. Local runs remain opt-in
+because they create real Kernel resources.
 
 Required for all acceptance tests:
 
