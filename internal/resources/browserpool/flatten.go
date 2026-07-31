@@ -35,6 +35,7 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 		Name:              flattenName(pool, &diags),
 		Size:              types.Int64Value(config.Size),
 		ProfileID:         flattenResolvedProfileID(pool, config, &diags),
+		RefreshOnProfile:  flattenBool("browser_pool_config.refresh_on_profile_update", config.JSON.RefreshOnProfileUpdate.Raw(), config.JSON.RefreshOnProfileUpdate.Valid(), config.RefreshOnProfileUpdate, &diags),
 		ProxyID:           flattenString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
 		ExtensionIDs:      flattenResolvedExtensionIDs(pool, config, base.ExtensionIDs, &diags),
 		ChromePolicy:      omittedChromePolicy(config.JSON.ChromePolicy.Raw(), base.ChromePolicy),

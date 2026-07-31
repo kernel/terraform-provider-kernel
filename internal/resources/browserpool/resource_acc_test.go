@@ -172,6 +172,7 @@ resource "kernel_browser_pool" "test" {
   headless                        = true
   kiosk_mode                      = false
   stealth                         = %[3]t
+  refresh_on_profile_update       = false
   timeout_seconds                 = 90
   fill_rate_per_minute            = 0
   rebuild_idle_browsers_on_update = true

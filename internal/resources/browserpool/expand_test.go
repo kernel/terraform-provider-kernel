@@ -401,6 +401,103 @@ func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWithoutLaunchChanges(t *tes
 	assertEmptyUpdateSDKParams(t, params)
 }
 
+func TestExpandUpdateParamsMapsRefreshOnProfileUpdateChanges(t *testing.T) {
+	tests := map[string]struct {
+		plan  types.Bool
+		state types.Bool
+		want  bool
+	}{
+		"enable":  {plan: types.BoolValue(true), state: types.BoolValue(false), want: true},
+		"disable": {plan: types.BoolValue(false), state: types.BoolValue(true), want: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			params, hasPatch, diags := expandUpdateParams(
+				context.Background(),
+				refreshOnProfileUpdateModel(test.plan),
+				refreshOnProfileUpdateModel(test.state),
+			)
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
+			}
+			if !hasPatch {
+				t.Fatal("refresh_on_profile_update change did not produce an API patch")
+			}
+
+			body := marshalSDKParams(t, params)
+			want := map[string]any{"refresh_on_profile_update": test.want}
+			if !jsonEqual(t, body, want) {
+				t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+			}
+		})
+	}
+}
+
+func TestExpandUpdateParamsOmitsUnchangedRefreshOnProfileUpdate(t *testing.T) {
+	model := refreshOnProfileUpdateModel(types.BoolValue(true))
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), model, model)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("unchanged refresh_on_profile_update produced an API patch")
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
+func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolValue(false))
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile change did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"profile":                   map[string]any{"id": "profile-2"},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsLetsAPIChooseRefreshDefaultWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolUnknown())
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile change did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": "profile-2"}}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func refreshOnProfileUpdateModel(value types.Bool) browserPoolModel {
+	model := updateModelForTest()
+	model.RefreshOnProfile = value
+	return model
+}
+
 func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
 	state := browserPoolModel{
 		ProfileID:    types.StringValue("profile-1"),

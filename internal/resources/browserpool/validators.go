@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
 	_ validator.String = browserPoolNameValidator{}
 	_ validator.String = chromePolicyJSONValidator{}
+	_ validator.Bool   = refreshOnProfileUpdateValidator{}
 )
 
 var (
@@ -46,6 +49,34 @@ func (browserPoolNameValidator) ValidateString(_ context.Context, req validator.
 		req.Path,
 		"Invalid Browser Pool Name",
 		fmt.Sprintf("name must be 1-%d characters using letters, numbers, dots, underscores, or hyphens, and must not be a cuid-like string.", maxBrowserPoolNameLength),
+	)
+}
+
+type refreshOnProfileUpdateValidator struct{}
+
+func (refreshOnProfileUpdateValidator) Description(context.Context) string {
+	return "refresh_on_profile_update can be true only when profile_id is set"
+}
+
+func (v refreshOnProfileUpdateValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (refreshOnProfileUpdateValidator) ValidateBool(ctx context.Context, req validator.BoolRequest, resp *validator.BoolResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || !req.ConfigValue.ValueBool() {
+		return
+	}
+
+	var profileID types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("profile_id"), &profileID)...)
+	if resp.Diagnostics.HasError() || profileID.IsUnknown() || !profileID.IsNull() {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		req.Path,
+		"Missing Browser Pool Profile",
+		"refresh_on_profile_update can be true only when profile_id is set.",
 	)
 }
 

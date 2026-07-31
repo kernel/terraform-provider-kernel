@@ -8,6 +8,7 @@ type browserPoolModel struct {
 	ProjectID         types.String      `tfsdk:"project_id"`
 	Size              types.Int64       `tfsdk:"size"`
 	ProfileID         types.String      `tfsdk:"profile_id"`
+	RefreshOnProfile  types.Bool        `tfsdk:"refresh_on_profile_update"`
 	ProxyID           types.String      `tfsdk:"proxy_id"`
 	ExtensionIDs      types.List        `tfsdk:"extension_ids"`
 	ChromePolicy      chromePolicyValue `tfsdk:"chrome_policy"`

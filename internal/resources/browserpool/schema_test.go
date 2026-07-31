@@ -27,6 +27,7 @@ func TestSchemaContainsOnlySupportedAttributes(t *testing.T) {
 		"project_id":                      {},
 		"size":                            {},
 		"profile_id":                      {},
+		"refresh_on_profile_update":       {},
 		"proxy_id":                        {},
 		"extension_ids":                   {},
 		"chrome_policy":                   {},
@@ -87,6 +88,9 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 		return attr.Optional && attr.Computed && !attr.Required
 	})
 	assertBoolAttribute(t, s, "stealth", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertBoolAttribute(t, s, "refresh_on_profile_update", func(attr rschema.BoolAttribute) bool {
 		return attr.Optional && attr.Computed && !attr.Required
 	})
 	assertInt64Attribute(t, s, "timeout_seconds", func(attr rschema.Int64Attribute) bool {
@@ -471,6 +475,72 @@ func TestSchemaValidatesProfileIDNonEmpty(t *testing.T) {
 
 	assertStringRejects(t, attr, "profile_id", "")
 	assertStringAccepts(t, attr, "profile_id", "profile-1")
+}
+
+func TestSchemaValidatesRefreshOnProfileUpdateRequiresProfile(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	tests := map[string]struct {
+		refresh   types.Bool
+		profileID tftypes.Value
+		wantError bool
+	}{
+		"true without profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+			wantError: true,
+		},
+		"false without profile": {
+			refresh:   types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+		"true with profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+		"true with unknown profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+		},
+		"unknown without profile": {
+			refresh:   types.BoolUnknown(),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			diags := validateRefreshOnProfileUpdate(attr.BoolValidators(), test.refresh, test.profileID)
+			if test.wantError && !diags.HasError() {
+				t.Fatal("expected validation error")
+			}
+			if !test.wantError && diags.HasError() {
+				t.Fatalf("unexpected validation error: %v", diags)
+			}
+		})
+	}
+}
+
+func validateRefreshOnProfileUpdate(validators []validator.Bool, refresh types.Bool, profileID tftypes.Value) diag.Diagnostics {
+	profileSchema := rschema.Schema{Attributes: map[string]rschema.Attribute{
+		"profile_id": rschema.StringAttribute{Optional: true},
+	}}
+	config := tfsdk.Config{
+		Schema: profileSchema,
+		Raw: tftypes.NewValue(
+			profileSchema.Type().TerraformType(context.Background()),
+			map[string]tftypes.Value{"profile_id": profileID},
+		),
+	}
+	req := validator.BoolRequest{
+		Path:        path.Root("refresh_on_profile_update"),
+		Config:      config,
+		ConfigValue: refresh,
+	}
+	var resp validator.BoolResponse
+	for _, v := range validators {
+		v.ValidateBool(context.Background(), req, &resp)
+	}
+	return resp.Diagnostics
 }
 
 func TestSchemaValidatesProxyIDNonEmpty(t *testing.T) {

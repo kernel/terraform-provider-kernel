@@ -69,6 +69,14 @@ func BrowserPoolSchema() rschema.Schema {
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
+			"refresh_on_profile_update": rschema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "When true, idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` to be set.",
+				Validators: []validator.Bool{
+					refreshOnProfileUpdateValidator{},
+				},
+			},
 			"proxy_id": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Optional proxy ID to use for browsers created by this pool.",
