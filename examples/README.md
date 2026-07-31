@@ -16,7 +16,9 @@ Project-scoped examples additionally require:
 export KERNEL_PROJECT_ID="..."
 ```
 
-Use local development overrides while the provider is unreleased. See the root [README.md](../README.md) for the `~/.terraformrc` setup.
+Run `terraform init` to install the published provider. For local provider
+development, see the root [README.md](../README.md) for the `~/.terraformrc`
+override setup.
 
 ## Examples
 

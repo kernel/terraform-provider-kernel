@@ -114,7 +114,8 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 - Ensure the public repository name stays lowercase and matches `terraform-provider-kernel`.
 - Sign in to the Terraform Registry with the GitHub account or organization that owns the namespace.
 - Add the public GPG key in the Terraform Registry before publishing.
-- Confirm generated docs render with the Terraform Registry documentation preview before the first release.
+- Confirm generated docs render with the Terraform Registry documentation
+  preview before publishing each release.
 
 ## Security And State Review
 

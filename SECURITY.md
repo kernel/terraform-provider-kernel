@@ -2,8 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest released version. Before the first
-release, this policy applies to the `main` branch.
+Security fixes are provided for the latest released version.
 
 ## Reporting Security Issues
 
