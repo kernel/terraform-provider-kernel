@@ -85,6 +85,7 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "project_id", true, false)
 	assertAttributeMode(t, resp.Schema, "size", false, true)
 	assertAttributeMode(t, resp.Schema, "profile_id", false, true)
+	assertAttributeMode(t, resp.Schema, "refresh_on_profile_update", false, true)
 	assertAttributeMode(t, resp.Schema, "extension_ids", false, true)
 	assertAttributeMode(t, resp.Schema, "proxy_id", false, true)
 	assertAttributeMode(t, resp.Schema, "headless", false, true)
