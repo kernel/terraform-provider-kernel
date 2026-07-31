@@ -4,8 +4,8 @@ Use this checklist before publishing a Kernel Terraform provider version.
 
 ## Release Preconditions
 
-- The repository has no published provider tags. Present v1 as the first public release, not as an upgrade or migration from v0.
-- Review the [first public release guide](first-release.md) and include its supported-surface and import guidance in the release notes.
+- For v0.0.1, present it as the first public release, not as an upgrade or migration from an earlier provider version.
+- For v0.0.1, review the [first public release guide](first-release.md) and include its supported-surface and import guidance in the release notes.
 - Work from a clean `main` checkout after the PR stack is merged.
 - Run `bash scripts/check-docs.sh`.
 - Run `bash scripts/check-markdown-links.sh`.
@@ -28,12 +28,26 @@ Use this checklist before publishing a Kernel Terraform provider version.
 - Verify unscoped API calls send no `X-Kernel-Project-Id` header; it is sent only when a resource-level `project_id` or the provider default resolves a project.
 - Confirm `terraform-registry-manifest.json` contains protocol `["6.0"]` for Terraform Plugin Framework.
 - Confirm `LICENSE` contains the approved Apache License 2.0 text.
+- Confirm immutable GitHub Releases are enabled for the repository. The
+  publication job intentionally has no repository-administration permission to
+  inspect or change this setting.
 - Confirm GitHub private vulnerability reporting or a public security contact is configured and reflected in `SECURITY.md`.
-- Confirm there is no branch named like the release tag, for example `v1.0.0`.
-
+- Store `GPG_PRIVATE_KEY` and `PASSPHRASE` as repository Actions secrets. Set
+  the repository Actions variable `GPG_FINGERPRINT` to the fingerprint
+  registered with the Terraform Registry.
+- Add a repository ruleset that restricts creation, update, and deletion of
+  `v*` tags to the Kernel engineering team. Inspect the ruleset's bypass list
+  before releasing; do not allow repository roles, outside collaborators, or
+  organization administrators to bypass it. Ruleset configuration is an
+  administrator-owned setup requirement, not a workflow runtime check.
+- GitHub repository writers can create Releases through the API; GitHub does not
+  provide a separate release-publisher role. Treat every account with repository
+  write access as release-authorized and keep that group limited to Kernel
+  engineers. The tag ruleset remains the control that authorizes a release
+  workflow run.
 ## Registry Release Assets
 
-Terraform Registry provider releases are GitHub Releases with semver tags prefixed by `v`, such as `v1.0.0`.
+Terraform Registry provider releases are GitHub Releases with semver tags prefixed by `v`, such as `v0.0.1`.
 
 Each release must include:
 
@@ -58,16 +72,34 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
 ## GoReleaser Notes
 
 - `.goreleaser.yml` is the source of truth for registry artifact names, target
-  platforms, checksums, manifest inclusion, and checksum signing.
+  platforms, checksums, and manifest inclusion. The release workflow owns
+  checksum signing and publication.
 - Normal CI validates the GoReleaser configuration and registry manifest without
   building the complete platform matrix.
-- `.github/workflows/release.yml` prepares unsigned, unpublished assets for
-  stable `vMAJOR.MINOR.PATCH` tags after confirming the repository is public
-  and the tag commit is reachable from `main`. It pins GoReleaser to the pushed
-  tag, verifies the release contract, and retains the assets for seven days.
-- Real releases sign the checksum file once with the GPG key selected by
-  `GPG_FINGERPRINT`. The detached signature is named by appending `.sig` to the
-  checksum filename. Publication remains a separate release step.
+- `.github/workflows/release.yml` runs for `v*` tags. Its preparation job has
+  read-only repository access and accepts only stable `vMAJOR.MINOR.PATCH`
+  versions. It requires the Apache 2.0 license, public repository visibility,
+  and a commit reachable from `main`, then builds and verifies the unsigned
+  assets. The workflow artifact is retained for seven days. Only the
+  tag-triggered publication job receives `contents: write`.
+- Before creating a tag, run the workflow manually with the intended version.
+  Manual runs create an unpushed tag only inside the ephemeral runner, build
+  the same unsigned assets, and exercise checksum and GPG signing with
+  `contents: read`. They never create a remote tag or GitHub Release.
+- For a tag-triggered release, confirm the acceptance matrix passed and the tag
+  ruleset's bypass list still contains only the Kernel engineering team before
+  creating the tag. The job revalidates the tag and checksums, requires the
+  imported key to match `GPG_FINGERPRINT`, signs the checksum file, and publishes
+  the GitHub Release.
+- Failed-job reruns reuse the prepared artifact from the same workflow run. A
+  full rerun replaces that run's artifact. If publication fails or is
+  interrupted, it may leave a draft. Any existing draft stops retries until a
+  Kernel engineer inspects and removes it manually. An existing published
+  release always stops the workflow.
+- For `v0.0.1`, GitHub includes the tagged
+  [first public release guide](first-release.md) with the generated release
+  notes. Later versions use generated release notes without first-release
+  guidance.
 
 ## Registry Setup
 
@@ -96,4 +128,4 @@ References:
 
 - HashiCorp Terraform provider publishing: https://developer.hashicorp.com/terraform/registry/providers/publishing
 - HashiCorp provider registry protocol: https://developer.hashicorp.com/terraform/internals/provider-registry-protocol
-- GoReleaser checksum signing: https://goreleaser.com/customization/sign/
+- GitHub rulesets: https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets

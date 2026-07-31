@@ -1,6 +1,6 @@
 # First Public Release
 
-The first published Kernel Terraform provider version will be v1. This
+The first published Kernel Terraform provider version is v0.0.1. This
 repository has no earlier published tags, so this release has no provider
 upgrade or state migration path.
 

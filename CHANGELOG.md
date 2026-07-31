@@ -2,9 +2,9 @@
 
 All notable changes to the Kernel Terraform provider are recorded here.
 
-## Unreleased
+## v0.0.1
 
-First public release candidate:
+First public release:
 
 - Provider configuration for `api_key`, `base_url`, and `project_id`.
 - `kernel_project` and `kernel_browser_pool` resources for durable desired state.
@@ -20,6 +20,5 @@ Intentionally not included:
 - API key, profile, proxy, extension, deployment, or app resources.
 - `force_destroy` browser-pool deletion.
 
-There is no upgrade or migration path from an earlier published version because
-this repository has no published provider tags. See the
-[first public release guide](docs/first-release.md).
+v0.0.1 has no upgrade or migration path from an earlier published version. See
+the [first public release guide](docs/first-release.md).
