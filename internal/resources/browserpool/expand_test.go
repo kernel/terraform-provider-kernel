@@ -58,9 +58,33 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 	}
 }
 
+func TestExpandCreateParamsMapsRefreshOnProfileUpdateFalse(t *testing.T) {
+	model := browserPoolModel{
+		Size:             types.Int64Value(1),
+		ProfileID:        types.StringValue("profile-1"),
+		RefreshOnProfile: types.BoolValue(false),
+	}
+
+	params, diags := expandCreateParams(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"size":                      float64(1),
+		"profile":                   map[string]any{"id": "profile-1"},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
 func TestExpandCreateParamsOmitsUnknownServerDefaults(t *testing.T) {
 	model := browserPoolModel{
 		Size:              types.Int64Value(1),
+		RefreshOnProfile:  types.BoolUnknown(),
 		Headless:          types.BoolUnknown(),
 		KioskMode:         types.BoolUnknown(),
 		Stealth:           types.BoolUnknown(),
@@ -328,6 +352,98 @@ func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsMapsRefreshOnProfileUpdateChanges(t *testing.T) {
+	tests := map[string]struct {
+		plan  types.Bool
+		state types.Bool
+		want  bool
+	}{
+		"enable":  {plan: types.BoolValue(true), state: types.BoolValue(false), want: true},
+		"disable": {plan: types.BoolValue(false), state: types.BoolValue(true), want: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			params, diags := expandUpdateParams(
+				context.Background(),
+				refreshOnProfileUpdateModel(test.plan),
+				refreshOnProfileUpdateModel(test.state),
+			)
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
+			}
+
+			body := marshalSDKParams(t, params)
+			want := map[string]any{"refresh_on_profile_update": test.want}
+			if !jsonEqual(t, body, want) {
+				t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+			}
+		})
+	}
+}
+
+func TestExpandUpdateParamsOmitsUnchangedRefreshOnProfileUpdate(t *testing.T) {
+	model := refreshOnProfileUpdateModel(types.BoolValue(true))
+
+	params, diags := expandUpdateParams(context.Background(), model, model)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	if body := marshalSDKParams(t, params); len(body) != 0 {
+		t.Fatalf("update params = %#v, want empty patch for unchanged refresh_on_profile_update", body)
+	}
+}
+
+func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolValue(false))
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"profile":                   map[string]any{"id": "profile-2"},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsLetsAPIChooseRefreshDefaultWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolUnknown())
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": "profile-2"}}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func refreshOnProfileUpdateModel(value types.Bool) browserPoolModel {
+	return browserPoolModel{
+		Size:             types.Int64Value(1),
+		RefreshOnProfile: value,
+		ExtensionIDs:     types.ListNull(types.StringType),
+		ChromePolicy:     chromePolicyNull(),
+		Viewport:         types.ObjectNull(viewportAttrTypes()),
 	}
 }
 

@@ -34,6 +34,7 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 			"headless": true,
 			"kiosk_mode": true,
 			"stealth": false,
+			"refresh_on_profile_update": true,
 			"start_url": "https://start.example",
 			"timeout_seconds": 90,
 			"fill_rate_per_minute": 20
@@ -73,6 +74,9 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	}
 	if got.Stealth.ValueBool() {
 		t.Fatal("stealth = true, want false")
+	}
+	if !got.RefreshOnProfile.ValueBool() {
+		t.Fatal("refresh_on_profile_update = false, want true")
 	}
 	if got.StartURL.ValueString() != "https://start.example" {
 		t.Fatalf("start_url = %q, want https://start.example", got.StartURL.ValueString())
@@ -176,6 +180,9 @@ func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	}
 	if !got.Stealth.IsNull() {
 		t.Fatalf("stealth = %#v, want null", got.Stealth)
+	}
+	if !got.RefreshOnProfile.IsNull() {
+		t.Fatalf("refresh_on_profile_update = %#v, want null", got.RefreshOnProfile)
 	}
 	assertStringNull(t, "start_url", got.StartURL)
 	if !got.TimeoutSeconds.IsNull() {
@@ -417,6 +424,13 @@ func TestFlattenBrowserPoolRejectsInvalidScalarResponseFields(t *testing.T) {
 			"browser_pool_config": {
 				"size": 1,
 				"headless": "true"
+			}
+		}`,
+		"refresh on profile update bool": `{
+			"id": "pool-1",
+			"browser_pool_config": {
+				"size": 1,
+				"refresh_on_profile_update": "true"
 			}
 		}`,
 		"empty string": `{

@@ -40,6 +40,9 @@ func expandCreateParams(ctx context.Context, model browserPoolModel) (kernel.Bro
 	if isKnownString(model.ProfileID) {
 		params.Profile.ID = kernel.String(model.ProfileID.ValueString())
 	}
+	if isKnownBool(model.RefreshOnProfile) {
+		params.RefreshOnProfileUpdate = kernel.Bool(model.RefreshOnProfile.ValueBool())
+	}
 	if isKnownString(model.ProxyID) {
 		params.ProxyID = kernel.String(model.ProxyID.ValueString())
 	}
@@ -115,8 +118,12 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 	if !plan.Size.Equal(state.Size) {
 		params.Size = kernel.Int(plan.Size.ValueInt64())
 	}
-	if !plan.ProfileID.Equal(state.ProfileID) && isKnownString(plan.ProfileID) {
+	profileChanged := !plan.ProfileID.Equal(state.ProfileID)
+	if profileChanged && isKnownString(plan.ProfileID) {
 		params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
+	}
+	if (!plan.RefreshOnProfile.Equal(state.RefreshOnProfile) || profileChanged) && isKnownBool(plan.RefreshOnProfile) {
+		params.RefreshOnProfileUpdate = kernel.Bool(plan.RefreshOnProfile.ValueBool())
 	}
 	if !plan.ProxyID.Equal(state.ProxyID) {
 		if plan.ProxyID.IsNull() {
