@@ -36,15 +36,17 @@ Use this checklist before publishing a Kernel Terraform provider version.
   the repository Actions variable `GPG_FINGERPRINT` to the fingerprint
   registered with the Terraform Registry.
 - Add a repository ruleset that restricts creation, update, and deletion of
-  `v*` tags to the Kernel engineering team. Inspect the ruleset's bypass list
-  before releasing; do not allow repository roles, outside collaborators, or
-  organization administrators to bypass it. Ruleset configuration is an
-  administrator-owned setup requirement, not a workflow runtime check.
-- GitHub repository writers can create Releases through the API; GitHub does not
-  provide a separate release-publisher role. Treat every account with repository
-  write access as release-authorized and keep that group limited to Kernel
-  engineers. The tag ruleset remains the control that authorizes a release
-  workflow run.
+  `v*` tags. Configure its bypass list for the `Write`, `Maintain`, and `Admin`
+  repository roles, matching the release-authorization model below. Before
+  releasing, confirm every account with write-capable repository access is a
+  Kernel engineer and no outside collaborator has that access. Ruleset
+  configuration is an administrator-owned setup requirement, not a workflow
+  runtime check.
+- GitHub accounts with `Write`, `Maintain`, or `Admin` access can create Releases
+  through the API; GitHub does not provide a separate release-publisher role.
+  Treat every such account as release-authorized and keep that group limited to
+  Kernel engineers. The tag ruleset remains the control that authorizes a
+  release workflow run.
 ## Registry Release Assets
 
 Terraform Registry provider releases are GitHub Releases with semver tags prefixed by `v`, such as `v0.0.1`.
@@ -86,9 +88,11 @@ Do not replace or mutate assets for a published version. If an asset, checksum, 
   Manual runs create an unpushed tag only inside the ephemeral runner, build
   the same unsigned assets, and exercise checksum and GPG signing with
   `contents: read`. They never create a remote tag or GitHub Release.
-- For a tag-triggered release, confirm the acceptance matrix passed and the tag
-  ruleset's bypass list still contains only the Kernel engineering team before
-  creating the tag. The job revalidates the tag and checksums, requires the
+- For a tag-triggered release, confirm the acceptance matrix passed, the tag
+  ruleset still grants bypass to the `Write`, `Maintain`, and `Admin` repository
+  roles, every account with write-capable access is a Kernel engineer, and no
+  outside collaborator has that access. The job revalidates the tag and
+  checksums, requires the
   imported key to match `GPG_FINGERPRINT`, signs the checksum file, and publishes
   the GitHub Release.
 - Failed-job reruns reuse the prepared artifact from the same workflow run. A
