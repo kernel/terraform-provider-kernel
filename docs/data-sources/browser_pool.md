@@ -30,6 +30,7 @@ Lookup durable Kernel browser pool configuration.
 - `kiosk_mode` (Boolean) Whether browsers launch in kiosk mode.
 - `profile_id` (String) Resolved profile ID attached to the pool, if any.
 - `proxy_id` (String) Proxy ID attached to browsers in the pool, if any.
+- `refresh_on_profile_update` (Boolean) Whether idle browsers are refreshed when the pool's profile is updated.
 - `size` (Number) Number of browsers maintained in the pool.
 - `start_url` (String) URL opened when a browser is warmed into the pool, if configured.
 - `stealth` (Boolean) Whether browsers launch in stealth mode.
