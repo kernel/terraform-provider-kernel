@@ -2,7 +2,8 @@
 
 ## Supported Versions
 
-The provider has no public release yet; the first public release ships as a complete v1, and v0 tags stay internal. Before the first public release, confirm which released versions receive security fixes and update this section if support differs from latest-only.
+Security fixes are provided for the latest released version. Before the first
+release, this policy applies to the `main` branch.
 
 ## Reporting Security Issues
 

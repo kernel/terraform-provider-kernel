@@ -333,6 +333,63 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 				return clients.DeleteProject(ctx, "project_123")
 			},
 		},
+		"profile create": {
+			method:    http.MethodPost,
+			path:      "/profiles",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateProfile(ctx, "project_123", kernel.ProfileNewParams{Name: kernel.String("Profile")})
+				return err
+			},
+		},
+		"profile delete": {
+			method:    http.MethodDelete,
+			path:      "/profiles/profile_123",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteProfile(ctx, "project_123", "profile_123")
+			},
+		},
+		"proxy create": {
+			method:    http.MethodPost,
+			path:      "/proxies",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateProxy(ctx, "project_123", kernel.ProxyNewParams{
+					Name: kernel.String("Proxy"),
+					Type: kernel.ProxyNewParamsTypeDatacenter,
+				})
+				return err
+			},
+		},
+		"proxy delete": {
+			method:    http.MethodDelete,
+			path:      "/proxies/proxy_123",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteProxy(ctx, "project_123", "proxy_123")
+			},
+		},
+		"extension upload": {
+			method:    http.MethodPost,
+			path:      "/extensions",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.UploadExtension(ctx, "project_123", kernel.ExtensionUploadParams{
+					File: strings.NewReader("extension archive"),
+					Name: kernel.String("Extension"),
+				})
+				return err
+			},
+		},
+		"extension delete": {
+			method:    http.MethodDelete,
+			path:      "/extensions/extension_123",
+			projectID: "project_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteExtension(ctx, "project_123", "extension_123")
+			},
+		},
 		"browser pool create": {
 			method:    http.MethodPost,
 			path:      "/browser_pools",
@@ -439,6 +496,33 @@ func TestClientsDoNotExposeRuntimeBrowserPoolMethods(t *testing.T) {
 	for _, name := range []string{"Acquire", "Release", "Flush"} {
 		if _, ok := typ.MethodByName(name); ok {
 			t.Fatalf("Clients exposes runtime method %s", name)
+		}
+	}
+}
+
+func TestClientsDoNotExposeProfileArchiveMethods(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := reflect.TypeOf(Clients{}).MethodByName("DownloadProfile"); ok {
+		t.Fatal("Clients exposes profile archive download")
+	}
+}
+
+func TestClientsDoNotExposeProxyHealthCheck(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := reflect.TypeOf(Clients{}).MethodByName("CheckProxy"); ok {
+		t.Fatal("Clients exposes runtime proxy health check")
+	}
+}
+
+func TestClientsDoNotExposeExtensionArchiveMethods(t *testing.T) {
+	t.Parallel()
+
+	typ := reflect.TypeOf(Clients{})
+	for _, name := range []string{"DownloadExtension", "DownloadExtensionFromChromeStore"} {
+		if _, ok := typ.MethodByName(name); ok {
+			t.Fatalf("Clients exposes extension archive method %s", name)
 		}
 	}
 }

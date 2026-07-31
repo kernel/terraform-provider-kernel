@@ -1,6 +1,6 @@
 # Kernel Terraform Provider Architecture
 
-This document records the durable-only architecture, the implemented v0 baseline, and the target scope for the first public v1 of the Kernel Terraform provider.
+This document records the durable-only architecture, the initial public v0.0.1 surface, and the target scope for a future v1 of the Kernel Terraform provider.
 
 ## First Principles
 
@@ -25,8 +25,9 @@ Provider configuration:
 - optional `base_url`
 - optional `project_id`
 
-Resource:
+Resources:
 
+- `kernel_project`
 - `kernel_browser_pool`
 
 Data sources:
@@ -38,11 +39,12 @@ Data sources:
 
 Import:
 
+- `kernel_project` imports by canonical project ID.
 - `kernel_browser_pool` imports by canonical browser pool ID, optionally qualified as `<project-id>/<pool-id>`.
 
 ## v1 Target Scope
 
-The first public v1 should make durable Kernel configuration production-ready without turning Terraform into a runtime control plane. Core items are release-blocking unless the release notes explicitly defer them with an upstream API or SDK blocker.
+A future v1 should broaden production-ready durable Kernel configuration without turning Terraform into a runtime control plane.
 
 Resources require stable identity, refresh, delete, import, and, where applicable, project-scoping and sensitive-state semantics. Data sources require stable identity, deterministic exact lookup, and, where applicable, masked sensitive metadata, pagination, and project scoping. Tooling experiments require deterministic regeneration and must preserve the handwritten lifecycle boundary.
 
@@ -221,6 +223,9 @@ Acceptance tests must:
 - avoid browser/session runtime operations
 - exercise import and real delete behavior for each resource
 
+The current registered coverage and pre-tag live run are defined by the
+[Selected-Surface Acceptance Matrix](acceptance.md).
+
 ## PR Slicing
 
 PRs must be small, coherent, and shippable. No PR should rely on hidden follow-up work to keep the repo healthy.
@@ -265,4 +270,4 @@ Release checklist:
 - Runtime operations are absent from Terraform resources.
 - Import behavior is documented.
 - API and SDK blockers are either resolved or explicitly deferred.
-- Release process, signing, licensing, and versioning are complete before the first public v1 publication.
+- Release process, signing, licensing, and versioning are complete before the first public v0.0.1 publication.

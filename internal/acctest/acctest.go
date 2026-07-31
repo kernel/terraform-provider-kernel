@@ -159,6 +159,132 @@ func cleanupProject(t testing.TB, client projectCleaner, id string) {
 	})
 }
 
+// CleanupProfile registers a cleanup that deletes the profile from projectID;
+// empty means the env-configured default project.
+func CleanupProfile(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupProfile(t, ClientFromEnv(), projectID, id)
+}
+
+type profileCleaner interface {
+	DefaultProjectID() string
+	DeleteProfile(context.Context, string, string) error
+}
+
+func cleanupProfile(t testing.TB, client profileCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteProfile(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel profile %s: %v", id, err)
+		}
+	})
+}
+
+// CleanupProxy registers a cleanup that deletes the proxy from projectID;
+// empty means the env-configured default project.
+func CleanupProxy(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupProxy(t, ClientFromEnv(), projectID, id)
+}
+
+type proxyCleaner interface {
+	DefaultProjectID() string
+	DeleteProxy(context.Context, string, string) error
+}
+
+func cleanupProxy(t testing.TB, client proxyCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteProxy(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel proxy %s: %v", id, err)
+		}
+	})
+}
+
+// CleanupExtension registers a cleanup that deletes the extension from projectID;
+// empty means the env-configured default project.
+func CleanupExtension(t testing.TB, projectID, id string) {
+	t.Helper()
+
+	cleanupExtension(t, ClientFromEnv(), projectID, id)
+}
+
+type extensionCleaner interface {
+	DefaultProjectID() string
+	DeleteExtension(context.Context, string, string) error
+}
+
+func cleanupExtension(t testing.TB, client extensionCleaner, projectID, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	if projectID == "" {
+		projectID = client.DefaultProjectID()
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteExtension(ctx, projectID, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel extension %s: %v", id, err)
+		}
+	})
+}
+
 func ClientFromEnv() kernelclient.Clients {
 	return kernelclient.New(kernelclient.Config{
 		APIKey:    os.Getenv(EnvAPIKey),

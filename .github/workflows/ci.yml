@@ -56,3 +56,19 @@ jobs:
 
       - name: Check generated docs
         run: bash scripts/check-docs.sh
+
+      - name: Test release scripts
+        run: bash scripts/test-release-scripts.sh
+
+      - name: Set up GoReleaser
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          install-only: true
+
+      - name: Check release configuration
+        run: |
+          test -s LICENSE
+          goreleaser check
+          bash scripts/check-registry-manifest.sh

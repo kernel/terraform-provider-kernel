@@ -86,6 +86,9 @@ terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
 terraform import kernel_project.example <project-id>
 ```
 
+See the [first public release guide](docs/first-release.md) for the exact public
+surface and for adopting existing Kernel projects or browser pools.
+
 ## Local Development
 
 Build the provider:
@@ -143,24 +146,19 @@ export KERNEL_ACC=1
 export KERNEL_API_KEY="..."
 ```
 
-Browser-pool acceptance tests additionally require:
+Browser-pool and data-source acceptance tests additionally require:
 
 ```sh
 export KERNEL_PROJECT_ID="..."
 ```
 
-Run the durable resource acceptance tests:
-
-```sh
-go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
-go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
-```
-
 The tests create uniquely named durable resources and register independent
-cleanup. Browser-pool deletion remains `force=false`. The tests do not acquire
-browsers or perform runtime recovery.
+cleanup. Browser-pool deletion remains `force=false`. The tests do not acquire,
+release, or recover browsers.
+
+Use the commands in the [selected-surface acceptance matrix](docs/acceptance.md).
+It is the source of truth for current live coverage and the pre-tag release run.
 
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for package layout, Terraform semantics, testing strategy, and release planning.
-

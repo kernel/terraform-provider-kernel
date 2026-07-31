@@ -103,6 +103,14 @@ func (c Clients) GetProxy(ctx context.Context, projectID, id string) (*kernel.Pr
 	return c.proxies.Get(ctx, id, scope(projectID)...)
 }
 
+func (c Clients) CreateProxy(ctx context.Context, projectID string, params kernel.ProxyNewParams) (*kernel.ProxyNewResponse, error) {
+	return c.proxies.New(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteProxy(ctx context.Context, projectID, id string) error {
+	return c.proxies.Delete(ctx, id, scope(projectID, noMutationRetries())...)
+}
+
 func (c Clients) ListProxyPage(ctx context.Context, projectID string, offset int64) (ProxyPage, error) {
 	var raw *http.Response
 	params := kernel.ProxyListParams{
@@ -132,6 +140,14 @@ func (c Clients) ListProxyPage(ctx context.Context, projectID string, offset int
 }
 func (c Clients) GetProfile(ctx context.Context, projectID, idOrName string) (*kernel.Profile, error) {
 	return c.profiles.Get(ctx, idOrName, scope(projectID)...)
+}
+
+func (c Clients) CreateProfile(ctx context.Context, projectID string, params kernel.ProfileNewParams) (*kernel.Profile, error) {
+	return c.profiles.New(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteProfile(ctx context.Context, projectID, idOrName string) error {
+	return c.profiles.Delete(ctx, idOrName, scope(projectID, noMutationRetries())...)
 }
 
 func (c Clients) ListProfilePage(ctx context.Context, projectID, query string, offset int64) (ProfilePage, error) {
@@ -167,6 +183,14 @@ func (c Clients) ListProfilePage(ctx context.Context, projectID, query string, o
 // API treats the path parameter as id-or-name and returns metadata only.
 func (c Clients) GetExtension(ctx context.Context, projectID, idOrName string) (*kernel.ExtensionGetResponse, error) {
 	return c.extensions.Get(ctx, idOrName, scope(projectID)...)
+}
+
+func (c Clients) UploadExtension(ctx context.Context, projectID string, params kernel.ExtensionUploadParams) (*kernel.ExtensionUploadResponse, error) {
+	return c.extensions.Upload(ctx, params, scope(projectID, noMutationRetries())...)
+}
+
+func (c Clients) DeleteExtension(ctx context.Context, projectID, id string) error {
+	return c.extensions.Delete(ctx, id, scope(projectID, noMutationRetries())...)
 }
 
 func (c Clients) CreateBrowserPool(ctx context.Context, projectID string, params kernel.BrowserPoolNewParams) (*kernel.BrowserPool, error) {

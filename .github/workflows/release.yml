@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version to prepare without publishing
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.version || github.ref_name }}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check release preconditions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s LICENSE
+
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release versions must use stable semantic version format vMAJOR.MINOR.PATCH." >&2
+            exit 1
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Manual release preflight must run from main." >&2
+            exit 1
+          fi
+
+          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
+          if [ "$visibility" != "public" ]; then
+            echo "The provider repository must be public before a registry release." >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tags must point to commits reachable from origin/main." >&2
+            exit 1
+          fi
+
+      - name: Create local preflight tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            echo "Release version ${RELEASE_TAG} already exists." >&2
+            exit 1
+          fi
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build unsigned release artifacts
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          args: release --clean --skip=publish,sign
+        env:
+          GORELEASER_CURRENT_TAG: ${{ env.RELEASE_TAG }}
+
+      - name: Verify release artifacts
+        run: |
+          version="${RELEASE_TAG#v}"
+          cp terraform-registry-manifest.json "dist/terraform-provider-kernel_${version}_manifest.json"
+          bash scripts/check-release-artifacts.sh "$version"
+
+      - name: Verify signing configuration
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          EXPECTED_GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: bash scripts/sign-release-checksum.sh "${RELEASE_TAG#v}"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ env.RELEASE_TAG }}-${{ github.run_id }}
+          path: |
+            dist/*.zip
+            dist/*_manifest.json
+            dist/*_SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
+  publish:
+    name: Sign and publish release
+    if: github.event_name == 'push'
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-${{ github.ref_name }}-${{ github.run_id }}
+          path: dist
+
+      - name: Check publication preconditions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release="$(
+            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" |
+              jq -c --arg tag "$GITHUB_REF_NAME" '[.[][] | select(.tag_name == $tag)][0] // empty'
+          )"
+          if [ -n "$release" ]; then
+            if [ "$(jq -r .draft <<<"$release")" = "true" ]; then
+              echo "An existing draft release must be inspected and removed before retrying ${GITHUB_REF_NAME}." >&2
+            else
+              echo "A published release already exists for ${GITHUB_REF_NAME}." >&2
+            fi
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#v}"
+          checksum="dist/terraform-provider-kernel_${version}_SHA256SUMS"
+          test -s "$checksum"
+          (cd dist && sha256sum --check "$(basename "$checksum")")
+
+      - name: Sign and verify checksums
+        env:
+          EXPECTED_GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: bash scripts/sign-release-checksum.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          first_release_url="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/first-release.md"
+          manifest="dist/terraform-provider-kernel_${version}_manifest.json"
+          checksum="dist/terraform-provider-kernel_${version}_SHA256SUMS"
+          signature="${checksum}.sig"
+          notes=()
+          if [ "$GITHUB_REF_NAME" = "v0.0.1" ]; then
+            notes=(--notes "First-release guidance: [supported surface and imports](${first_release_url}).")
+          fi
+
+          bash scripts/check-release-tag.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
+          gh release create "$GITHUB_REF_NAME" \
+            dist/terraform-provider-kernel_"${version}"_*.zip \
+            "$manifest" \
+            "$checksum" \
+            "$signature" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --draft \
+            --generate-notes \
+            "${notes[@]}" \
+            --title "$GITHUB_REF_NAME"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/check-release-tag.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
