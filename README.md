@@ -130,7 +130,10 @@ Then run Terraform from a directory containing provider configuration:
 terraform plan
 ```
 
-Do not run `terraform init` just to exercise this unreleased provider through `dev_overrides`; `init` can still try to resolve providers through the registry. Use `init` only when other providers or modules in the same configuration need it.
+Do not run `terraform init` solely to exercise a locally built provider through
+`dev_overrides`; `init` still resolves provider dependencies through configured
+installation methods. Use `init` when the configuration also needs other
+providers or modules.
 
 ## Acceptance Tests
 
