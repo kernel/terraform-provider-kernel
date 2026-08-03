@@ -93,6 +93,12 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "start_url", false, true)
 	assertAttributeMode(t, resp.Schema, "timeout_seconds", false, true)
 	assertAttributeMode(t, resp.Schema, "fill_rate_per_minute", false, true)
+	assertAttributeMode(t, resp.Schema, "viewport", false, true)
+
+	viewport := resp.Schema.Attributes["viewport"].(dschema.SingleNestedAttribute)
+	for _, name := range []string{"width", "height", "refresh_rate"} {
+		assertAttributeMapMode(t, viewport.Attributes, name, false, true)
+	}
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
@@ -105,7 +111,12 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 
 func assertAttributeMode(t *testing.T, schema dschema.Schema, name string, optional, computed bool) {
 	t.Helper()
-	attribute, ok := schema.Attributes[name]
+	assertAttributeMapMode(t, schema.Attributes, name, optional, computed)
+}
+
+func assertAttributeMapMode(t *testing.T, attributes map[string]dschema.Attribute, name string, optional, computed bool) {
+	t.Helper()
+	attribute, ok := attributes[name]
 	if !ok {
 		t.Fatalf("schema missing %s", name)
 	}
@@ -261,6 +272,16 @@ func TestFlattenBrowserPoolViewportOptionalFields(t *testing.T) {
 		t.Fatalf("unexpected viewport diagnostics: %v", diags)
 	}
 	assertBrowserPoolViewport(t, withoutRefreshRate.Viewport, 1280, 800, types.Int64Null())
+}
+
+func TestFlattenBrowserPoolAcceptsMinimumViewport(t *testing.T) {
+	t.Parallel()
+
+	state, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"viewport":{"width":1,"height":1,"refresh_rate":1}}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected minimum viewport diagnostics: %v", diags)
+	}
+	assertBrowserPoolViewport(t, state.Viewport, 1, 1, types.Int64Value(1))
 }
 
 func TestFlattenBrowserPoolRejectsInvalidViewport(t *testing.T) {
