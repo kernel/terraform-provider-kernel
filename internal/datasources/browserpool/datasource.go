@@ -24,6 +24,12 @@ var (
 	_ datasource.DataSourceWithConfigure = (*browserPoolDataSource)(nil)
 )
 
+const (
+	minBrowserPoolTimeoutSeconds = 10
+	maxBrowserPoolTimeoutSeconds = 259200
+	minBrowserPoolFillRate       = 0
+)
+
 type browserPoolClient interface {
 	DefaultProjectID() string
 	GetBrowserPool(context.Context, string, string) (*kernel.BrowserPool, error)
@@ -34,16 +40,19 @@ type browserPoolDataSource struct {
 }
 
 type browserPoolModel struct {
-	ID           types.String `tfsdk:"id"`
-	Name         types.String `tfsdk:"name"`
-	ProjectID    types.String `tfsdk:"project_id"`
-	Size         types.Int64  `tfsdk:"size"`
-	ProfileID    types.String `tfsdk:"profile_id"`
-	ExtensionIDs types.List   `tfsdk:"extension_ids"`
-	ProxyID      types.String `tfsdk:"proxy_id"`
-	Headless     types.Bool   `tfsdk:"headless"`
-	KioskMode    types.Bool   `tfsdk:"kiosk_mode"`
-	Stealth      types.Bool   `tfsdk:"stealth"`
+	ID                types.String `tfsdk:"id"`
+	Name              types.String `tfsdk:"name"`
+	ProjectID         types.String `tfsdk:"project_id"`
+	Size              types.Int64  `tfsdk:"size"`
+	ProfileID         types.String `tfsdk:"profile_id"`
+	ExtensionIDs      types.List   `tfsdk:"extension_ids"`
+	ProxyID           types.String `tfsdk:"proxy_id"`
+	Headless          types.Bool   `tfsdk:"headless"`
+	KioskMode         types.Bool   `tfsdk:"kiosk_mode"`
+	Stealth           types.Bool   `tfsdk:"stealth"`
+	StartURL          types.String `tfsdk:"start_url"`
+	TimeoutSeconds    types.Int64  `tfsdk:"timeout_seconds"`
+	FillRatePerMinute types.Int64  `tfsdk:"fill_rate_per_minute"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -107,6 +116,18 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 			"stealth": dschema.BoolAttribute{
 				Computed:            true,
 				MarkdownDescription: "Whether browsers launch in stealth mode.",
+			},
+			"start_url": dschema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "URL opened when a browser is warmed into the pool, if configured.",
+			},
+			"timeout_seconds": dschema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "Default idle timeout in seconds for acquired browsers.",
+			},
+			"fill_rate_per_minute": dschema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "Percentage of the pool filled per minute.",
 			},
 		},
 	}
@@ -236,15 +257,18 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 
 	config := pool.BrowserPoolConfig
 	return browserPoolModel{
-		ID:           types.StringValue(pool.ID),
-		Name:         name,
-		Size:         types.Int64Value(config.Size),
-		ProfileID:    flattenResolvedProfileID(pool, &diags),
-		ExtensionIDs: flattenResolvedExtensionIDs(pool, &diags),
-		ProxyID:      flattenOptionalString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
-		Headless:     flattenOptionalBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
-		KioskMode:    flattenOptionalBool("browser_pool_config.kiosk_mode", config.JSON.KioskMode.Raw(), config.JSON.KioskMode.Valid(), config.KioskMode, &diags),
-		Stealth:      flattenOptionalBool("browser_pool_config.stealth", config.JSON.Stealth.Raw(), config.JSON.Stealth.Valid(), config.Stealth, &diags),
+		ID:                types.StringValue(pool.ID),
+		Name:              name,
+		Size:              types.Int64Value(config.Size),
+		ProfileID:         flattenResolvedProfileID(pool, &diags),
+		ExtensionIDs:      flattenResolvedExtensionIDs(pool, &diags),
+		ProxyID:           flattenOptionalString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
+		Headless:          flattenOptionalBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
+		KioskMode:         flattenOptionalBool("browser_pool_config.kiosk_mode", config.JSON.KioskMode.Raw(), config.JSON.KioskMode.Valid(), config.KioskMode, &diags),
+		Stealth:           flattenOptionalBool("browser_pool_config.stealth", config.JSON.Stealth.Raw(), config.JSON.Stealth.Valid(), config.Stealth, &diags),
+		StartURL:          flattenOptionalString("browser_pool_config.start_url", config.JSON.StartURL.Raw(), config.JSON.StartURL.Valid(), config.StartURL, &diags),
+		TimeoutSeconds:    flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
+		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
 	}, diags
 }
 
@@ -268,6 +292,41 @@ func flattenOptionalBool(field, raw string, valid bool, value bool, diags *diag.
 		return types.BoolNull()
 	}
 	return types.BoolValue(value)
+}
+
+func flattenTimeoutSeconds(raw string, valid bool, value int64, diags *diag.Diagnostics) types.Int64 {
+	result := flattenOptionalInt64("browser_pool_config.timeout_seconds", raw, valid, value, diags)
+	if result.IsNull() {
+		return result
+	}
+	if value < minBrowserPoolTimeoutSeconds || value > maxBrowserPoolTimeoutSeconds {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.timeout_seconds")
+		return types.Int64Null()
+	}
+	return result
+}
+
+func flattenFillRatePerMinute(raw string, valid bool, value int64, diags *diag.Diagnostics) types.Int64 {
+	result := flattenOptionalInt64("browser_pool_config.fill_rate_per_minute", raw, valid, value, diags)
+	if result.IsNull() {
+		return result
+	}
+	if value < minBrowserPoolFillRate {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.fill_rate_per_minute")
+		return types.Int64Null()
+	}
+	return result
+}
+
+func flattenOptionalInt64(field, raw string, valid bool, value int64, diags *diag.Diagnostics) types.Int64 {
+	if raw == "" {
+		return types.Int64Null()
+	}
+	if !validResponseInt64(raw, valid, value) {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", field)
+		return types.Int64Null()
+	}
+	return types.Int64Value(value)
 }
 
 func flattenResolvedProfileID(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {

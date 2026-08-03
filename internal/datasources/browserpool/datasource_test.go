@@ -48,7 +48,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -90,6 +90,9 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "headless", false, true)
 	assertAttributeMode(t, resp.Schema, "kiosk_mode", false, true)
 	assertAttributeMode(t, resp.Schema, "stealth", false, true)
+	assertAttributeMode(t, resp.Schema, "start_url", false, true)
+	assertAttributeMode(t, resp.Schema, "timeout_seconds", false, true)
+	assertAttributeMode(t, resp.Schema, "fill_rate_per_minute", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
@@ -195,7 +198,10 @@ func TestReadSetsTerraformState(t *testing.T) {
 					"proxy_id":"proxy-1",
 					"headless":true,
 					"kiosk_mode":false,
-					"stealth":true
+					"stealth":true,
+					"start_url":"chrome://newtab",
+					"timeout_seconds":10,
+					"fill_rate_per_minute":0
 				}
 			}`), nil
 		},
@@ -231,6 +237,56 @@ func TestReadSetsTerraformState(t *testing.T) {
 	assertBrowserPoolStringList(t, state.ExtensionIDs, nil)
 	if state.ProxyID.ValueString() != "proxy-1" || !state.Headless.ValueBool() || state.KioskMode.IsNull() || state.KioskMode.ValueBool() || !state.Stealth.ValueBool() {
 		t.Fatalf("launch state = %#v", state)
+	}
+	if state.StartURL.ValueString() != "chrome://newtab" || state.TimeoutSeconds.ValueInt64() != 10 || state.FillRatePerMinute.IsNull() || state.FillRatePerMinute.IsUnknown() || state.FillRatePerMinute.ValueInt64() != 0 {
+		t.Fatalf("warmup state = %#v", state)
+	}
+}
+
+func TestFlattenBrowserPoolWarmupConfigurationBoundaries(t *testing.T) {
+	t.Parallel()
+
+	omitted, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected omitted-field diagnostics: %v", diags)
+	}
+	if !omitted.StartURL.IsNull() || !omitted.TimeoutSeconds.IsNull() || !omitted.FillRatePerMinute.IsNull() {
+		t.Fatalf("omitted warmup state = %#v, want null values", omitted)
+	}
+
+	boundary, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"timeout_seconds":259200,"fill_rate_per_minute":0}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected boundary diagnostics: %v", diags)
+	}
+	if boundary.TimeoutSeconds.ValueInt64() != 259200 || boundary.FillRatePerMinute.IsNull() || boundary.FillRatePerMinute.IsUnknown() || boundary.FillRatePerMinute.ValueInt64() != 0 {
+		t.Fatalf("boundary warmup state = %#v", boundary)
+	}
+}
+
+func TestFlattenBrowserPoolRejectsInvalidWarmupConfiguration(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"empty start URL":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"start_url":""}}`,
+		"null start URL":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"start_url":null}}`,
+		"non-string URL":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"start_url":1}}`,
+		"null timeout":       `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"timeout_seconds":null}}`,
+		"non-number timeout": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"timeout_seconds":"10"}}`,
+		"timeout too low":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"timeout_seconds":9}}`,
+		"timeout too high":   `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"timeout_seconds":259201}}`,
+		"null fill rate":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"fill_rate_per_minute":null}}`,
+		"non-number rate":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"fill_rate_per_minute":"0"}}`,
+		"negative fill rate": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"fill_rate_per_minute":-1}}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, diags := flattenBrowserPool(*browserPoolFromJSON(body))
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics")
+			}
+		})
 	}
 }
 
@@ -474,28 +530,34 @@ func browserPoolFromJSON(body string) *kernel.BrowserPool {
 func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 	return tftypes.NewValue(
 		tftypes.Object{AttributeTypes: map[string]tftypes.Type{
-			"id":            tftypes.String,
-			"name":          tftypes.String,
-			"project_id":    tftypes.String,
-			"size":          tftypes.Number,
-			"profile_id":    tftypes.String,
-			"extension_ids": tftypes.List{ElementType: tftypes.String},
-			"proxy_id":      tftypes.String,
-			"headless":      tftypes.Bool,
-			"kiosk_mode":    tftypes.Bool,
-			"stealth":       tftypes.Bool,
+			"id":                   tftypes.String,
+			"name":                 tftypes.String,
+			"project_id":           tftypes.String,
+			"size":                 tftypes.Number,
+			"profile_id":           tftypes.String,
+			"extension_ids":        tftypes.List{ElementType: tftypes.String},
+			"proxy_id":             tftypes.String,
+			"headless":             tftypes.Bool,
+			"kiosk_mode":           tftypes.Bool,
+			"stealth":              tftypes.Bool,
+			"start_url":            tftypes.String,
+			"timeout_seconds":      tftypes.Number,
+			"fill_rate_per_minute": tftypes.Number,
 		}},
 		map[string]tftypes.Value{
-			"id":            id,
-			"name":          name,
-			"project_id":    projectID,
-			"size":          tftypes.NewValue(tftypes.Number, nil),
-			"profile_id":    tftypes.NewValue(tftypes.String, nil),
-			"extension_ids": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
-			"proxy_id":      tftypes.NewValue(tftypes.String, nil),
-			"headless":      tftypes.NewValue(tftypes.Bool, nil),
-			"kiosk_mode":    tftypes.NewValue(tftypes.Bool, nil),
-			"stealth":       tftypes.NewValue(tftypes.Bool, nil),
+			"id":                   id,
+			"name":                 name,
+			"project_id":           projectID,
+			"size":                 tftypes.NewValue(tftypes.Number, nil),
+			"profile_id":           tftypes.NewValue(tftypes.String, nil),
+			"extension_ids":        tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+			"proxy_id":             tftypes.NewValue(tftypes.String, nil),
+			"headless":             tftypes.NewValue(tftypes.Bool, nil),
+			"kiosk_mode":           tftypes.NewValue(tftypes.Bool, nil),
+			"stealth":              tftypes.NewValue(tftypes.Bool, nil),
+			"start_url":            tftypes.NewValue(tftypes.String, nil),
+			"timeout_seconds":      tftypes.NewValue(tftypes.Number, nil),
+			"fill_rate_per_minute": tftypes.NewValue(tftypes.Number, nil),
 		},
 	)
 }
