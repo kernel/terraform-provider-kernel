@@ -48,7 +48,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute", "viewport"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute", "viewport", "chrome_policy"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -99,6 +99,7 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	for _, name := range []string{"width", "height", "refresh_rate"} {
 		assertAttributeMapMode(t, viewport.Attributes, name, false, true)
 	}
+	assertAttributeMode(t, resp.Schema, "chrome_policy", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
@@ -213,7 +214,8 @@ func TestReadSetsTerraformState(t *testing.T) {
 					"start_url":"chrome://newtab",
 					"timeout_seconds":10,
 					"fill_rate_per_minute":0,
-					"viewport":{"width":1280,"height":800,"refresh_rate":60}
+					"viewport":{"width":1280,"height":800,"refresh_rate":60},
+					"chrome_policy":{"RestoreOnStartup":4,"HomepageLocation":"https://example.com?x=1&y=2"}
 				}
 			}`), nil
 		},
@@ -254,6 +256,51 @@ func TestReadSetsTerraformState(t *testing.T) {
 		t.Fatalf("warmup state = %#v", state)
 	}
 	assertBrowserPoolViewport(t, state.Viewport, 1280, 800, types.Int64Value(60))
+	if state.ChromePolicy.ValueString() != `{"HomepageLocation":"https://example.com?x=1&y=2","RestoreOnStartup":4}` {
+		t.Fatalf("chrome_policy = %q", state.ChromePolicy.ValueString())
+	}
+}
+
+func TestFlattenBrowserPoolChromePolicyNormalization(t *testing.T) {
+	t.Parallel()
+
+	omitted, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected omitted policy diagnostics: %v", diags)
+	}
+	if !omitted.ChromePolicy.IsNull() {
+		t.Fatalf("omitted chrome_policy = %v, want null", omitted.ChromePolicy)
+	}
+	explicitNull, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"chrome_policy":null}}`))
+	if diags.HasError() || !explicitNull.ChromePolicy.IsNull() {
+		t.Fatalf("explicit-null chrome_policy = %v, diagnostics = %v", explicitNull.ChromePolicy, diags)
+	}
+
+	state, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"chrome_policy":{"Tag":"<b>","Number":1.0,"Nested":{"enabled":true}}}}`))
+	if diags.HasError() {
+		t.Fatalf("unexpected policy diagnostics: %v", diags)
+	}
+	want := `{"Nested":{"enabled":true},"Number":1,"Tag":"<b>"}`
+	if state.ChromePolicy.ValueString() != want {
+		t.Fatalf("chrome_policy = %q, want %q", state.ChromePolicy.ValueString(), want)
+	}
+}
+
+func TestFlattenBrowserPoolRejectsInvalidChromePolicy(t *testing.T) {
+	t.Parallel()
+
+	for name, body := range map[string]string{
+		"array":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"chrome_policy":[]}}`,
+		"string": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"chrome_policy":"policy"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, diags := flattenBrowserPool(*browserPoolFromJSON(body))
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics")
+			}
+		})
+	}
 }
 
 func TestFlattenBrowserPoolViewportOptionalFields(t *testing.T) {
@@ -616,6 +663,7 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"timeout_seconds":      tftypes.Number,
 			"fill_rate_per_minute": tftypes.Number,
 			"viewport":             viewportType,
+			"chrome_policy":        tftypes.String,
 		}},
 		map[string]tftypes.Value{
 			"id":                   id,
@@ -632,6 +680,7 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 			"timeout_seconds":      tftypes.NewValue(tftypes.Number, nil),
 			"fill_rate_per_minute": tftypes.NewValue(tftypes.Number, nil),
 			"viewport":             tftypes.NewValue(viewportType, nil),
+			"chrome_policy":        tftypes.NewValue(tftypes.String, nil),
 		},
 	)
 }
