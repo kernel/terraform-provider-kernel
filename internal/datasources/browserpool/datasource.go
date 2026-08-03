@@ -28,6 +28,7 @@ const (
 	minBrowserPoolTimeoutSeconds = 10
 	maxBrowserPoolTimeoutSeconds = 259200
 	minBrowserPoolFillRate       = 0
+	minBrowserPoolViewportValue  = 1
 )
 
 type browserPoolClient interface {
@@ -53,6 +54,7 @@ type browserPoolModel struct {
 	StartURL          types.String `tfsdk:"start_url"`
 	TimeoutSeconds    types.Int64  `tfsdk:"timeout_seconds"`
 	FillRatePerMinute types.Int64  `tfsdk:"fill_rate_per_minute"`
+	Viewport          types.Object `tfsdk:"viewport"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -128,6 +130,15 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 			"fill_rate_per_minute": dschema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Percentage of the pool filled per minute.",
+			},
+			"viewport": dschema.SingleNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Browser viewport configured for the pool, if any.",
+				Attributes: map[string]dschema.Attribute{
+					"width":        dschema.Int64Attribute{Computed: true, MarkdownDescription: "Browser window width in pixels."},
+					"height":       dschema.Int64Attribute{Computed: true, MarkdownDescription: "Browser window height in pixels."},
+					"refresh_rate": dschema.Int64Attribute{Computed: true, MarkdownDescription: "Display refresh rate in Hz, if configured."},
+				},
 			},
 		},
 	}
@@ -269,6 +280,7 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 		StartURL:          flattenOptionalString("browser_pool_config.start_url", config.JSON.StartURL.Raw(), config.JSON.StartURL.Valid(), config.StartURL, &diags),
 		TimeoutSeconds:    flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
 		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
+		Viewport:          flattenViewport(config.JSON.Viewport.Raw(), config.JSON.Viewport.Valid(), config.Viewport, &diags),
 	}, diags
 }
 
@@ -327,6 +339,49 @@ func flattenOptionalInt64(field, raw string, valid bool, value int64, diags *dia
 		return types.Int64Null()
 	}
 	return types.Int64Value(value)
+}
+
+func flattenViewport(raw string, valid bool, viewport shared.BrowserViewport, diags *diag.Diagnostics) types.Object {
+	if raw == "" {
+		return types.ObjectNull(viewportAttributeTypes())
+	}
+	if !datasources.FieldPresent(raw) || !valid {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", "browser_pool_config.viewport")
+		return types.ObjectNull(viewportAttributeTypes())
+	}
+
+	diagnosticsBefore := len(*diags)
+	width := flattenRequiredPositiveInt64("browser_pool_config.viewport.width", viewport.JSON.Width.Raw(), viewport.JSON.Width.Valid(), viewport.Width, diags)
+	height := flattenRequiredPositiveInt64("browser_pool_config.viewport.height", viewport.JSON.Height.Raw(), viewport.JSON.Height.Valid(), viewport.Height, diags)
+	refreshRate := types.Int64Null()
+	if viewport.JSON.RefreshRate.Raw() != "" {
+		refreshRate = flattenRequiredPositiveInt64("browser_pool_config.viewport.refresh_rate", viewport.JSON.RefreshRate.Raw(), viewport.JSON.RefreshRate.Valid(), viewport.RefreshRate, diags)
+	}
+	if len(*diags) > diagnosticsBefore {
+		return types.ObjectNull(viewportAttributeTypes())
+	}
+
+	return types.ObjectValueMust(viewportAttributeTypes(), map[string]attr.Value{
+		"width":        width,
+		"height":       height,
+		"refresh_rate": refreshRate,
+	})
+}
+
+func flattenRequiredPositiveInt64(field, raw string, valid bool, value int64, diags *diag.Diagnostics) types.Int64 {
+	if !validResponseInt64(raw, valid, value) || value < minBrowserPoolViewportValue {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", field)
+		return types.Int64Null()
+	}
+	return types.Int64Value(value)
+}
+
+func viewportAttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"width":        types.Int64Type,
+		"height":       types.Int64Type,
+		"refresh_rate": types.Int64Type,
+	}
 }
 
 func flattenResolvedProfileID(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {

@@ -33,3 +33,13 @@ Lookup durable Kernel browser pool configuration.
 - `start_url` (String) URL opened when a browser is warmed into the pool, if configured.
 - `stealth` (Boolean) Whether browsers launch in stealth mode.
 - `timeout_seconds` (Number) Default idle timeout in seconds for acquired browsers.
+- `viewport` (Attributes) Browser viewport configured for the pool, if any. (see [below for nested schema](#nestedatt--viewport))
+
+<a id="nestedatt--viewport"></a>
+### Nested Schema for `viewport`
+
+Read-Only:
+
+- `height` (Number) Browser window height in pixels.
+- `refresh_rate` (Number) Display refresh rate in Hz, if configured.
+- `width` (Number) Browser window width in pixels.
