@@ -86,6 +86,10 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "size", false, true)
 	assertAttributeMode(t, resp.Schema, "profile_id", false, true)
 	assertAttributeMode(t, resp.Schema, "extension_ids", false, true)
+	assertAttributeMode(t, resp.Schema, "proxy_id", false, true)
+	assertAttributeMode(t, resp.Schema, "headless", false, true)
+	assertAttributeMode(t, resp.Schema, "kiosk_mode", false, true)
+	assertAttributeMode(t, resp.Schema, "stealth", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
