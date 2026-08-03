@@ -345,6 +345,37 @@ func TestSchemaPreservesComputedDefaultsDuringUnrelatedUpdates(t *testing.T) {
 	}
 }
 
+func TestSchemaPreservesImportedEmptyExtensionIDsWhenConfigurationOmitsThem(t *testing.T) {
+	attr := listAttribute(t, BrowserPoolSchema(), "extension_ids")
+	if !attr.Optional || !attr.Computed || attr.Required {
+		t.Fatalf("extension_ids must be optional and computed, got %#v", attr)
+	}
+	empty := types.ListValueMust(types.StringType, []tfattr.Value{})
+
+	planned := runListPlanModifiers(t, attr, empty, types.ListUnknown(types.StringType), types.ListNull(types.StringType))
+	if !planned.Equal(empty) {
+		t.Fatalf("empty extension_ids planned as %v, want prior empty state when omitted", planned)
+	}
+}
+
+func TestSchemaDefaultsOmittedExtensionIDsOnlyDuringCreate(t *testing.T) {
+	attr := listAttribute(t, BrowserPoolSchema(), "extension_ids")
+	empty := types.ListValueMust(types.StringType, []tfattr.Value{})
+	nullResource := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, nil)
+
+	planned := runListPlanModifiersWithStateRaw(t, attr, nullResource,
+		types.ListNull(types.StringType), types.ListUnknown(types.StringType), types.ListNull(types.StringType))
+	if !planned.Equal(empty) {
+		t.Fatalf("omitted extension_ids planned as %v during create, want empty list", planned)
+	}
+
+	planned = runListPlanModifiersWithStateRaw(t, attr, nullResource,
+		types.ListNull(types.StringType), types.ListUnknown(types.StringType), types.ListUnknown(types.StringType))
+	if !planned.IsUnknown() {
+		t.Fatalf("unknown configured extension_ids planned as %v, want unknown preserved", planned)
+	}
+}
+
 func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan, config types.Bool) types.Bool {
 	t.Helper()
 	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
@@ -370,6 +401,26 @@ func runInt64PlanModifiers(t *testing.T, attr rschema.Int64Attribute, state, pla
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.Int64Response{PlanValue: req.PlanValue}
 		m.PlanModifyInt64(context.Background(), req, resp)
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
+func runListPlanModifiers(t *testing.T, attr rschema.ListAttribute, state, plan, config types.List) types.List {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	return runListPlanModifiersWithStateRaw(t, attr, nonNullRaw, state, plan, config)
+}
+
+func runListPlanModifiersWithStateRaw(t *testing.T, attr rschema.ListAttribute, stateRaw tftypes.Value, state, plan, config types.List) types.List {
+	t.Helper()
+	req := planmodifier.ListRequest{
+		State:      tfsdk.State{Raw: stateRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.ListResponse{PlanValue: req.PlanValue}
+		m.PlanModifyList(context.Background(), req, resp)
 		req.PlanValue = resp.PlanValue
 	}
 	return req.PlanValue

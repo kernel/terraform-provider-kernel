@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
@@ -199,6 +200,7 @@ func (r *browserPoolResource) ImportState(ctx context.Context, req resource.Impo
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), poolID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectscope.StateValue(projectID))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("extension_ids"), types.ListValueMust(types.StringType, nil))...)
 }
 
 func parseImportID(id string) (projectID, poolID string, ok bool) {
