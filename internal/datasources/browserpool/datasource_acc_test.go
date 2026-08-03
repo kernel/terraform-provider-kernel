@@ -88,6 +88,7 @@ resource "kernel_browser_pool" "data_source_test" {
   headless             = true
   kiosk_mode           = false
   stealth              = false
+  refresh_on_profile_update = false
   timeout_seconds      = 90
   fill_rate_per_minute = 0
   viewport = {
@@ -134,6 +135,7 @@ func testAccCheckBrowserPoolDataSourceState(resourceName, name string) resource.
 		resource.TestCheckResourceAttr(resourceName, "headless", "true"),
 		resource.TestCheckResourceAttr(resourceName, "kiosk_mode", "false"),
 		resource.TestCheckResourceAttr(resourceName, "stealth", "false"),
+		resource.TestCheckResourceAttr(resourceName, "refresh_on_profile_update", "false"),
 		resource.TestCheckResourceAttr(resourceName, "timeout_seconds", "90"),
 		resource.TestCheckResourceAttr(resourceName, "fill_rate_per_minute", "0"),
 		resource.TestCheckResourceAttr(resourceName, "viewport.width", "1280"),

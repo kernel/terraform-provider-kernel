@@ -48,6 +48,7 @@ type browserPoolModel struct {
 	ProjectID         types.String `tfsdk:"project_id"`
 	Size              types.Int64  `tfsdk:"size"`
 	ProfileID         types.String `tfsdk:"profile_id"`
+	RefreshOnProfile  types.Bool   `tfsdk:"refresh_on_profile_update"`
 	ExtensionIDs      types.List   `tfsdk:"extension_ids"`
 	ProxyID           types.String `tfsdk:"proxy_id"`
 	Headless          types.Bool   `tfsdk:"headless"`
@@ -100,6 +101,10 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 			"profile_id": dschema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Resolved profile ID attached to the pool, if any.",
+			},
+			"refresh_on_profile_update": dschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether idle browsers are refreshed when the pool's profile is updated.",
 			},
 			"extension_ids": dschema.ListAttribute{
 				Computed:            true,
@@ -279,6 +284,7 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 		Name:              name,
 		Size:              types.Int64Value(config.Size),
 		ProfileID:         flattenResolvedProfileID(pool, &diags),
+		RefreshOnProfile:  flattenOptionalBool("browser_pool_config.refresh_on_profile_update", config.JSON.RefreshOnProfileUpdate.Raw(), config.JSON.RefreshOnProfileUpdate.Valid(), config.RefreshOnProfileUpdate, &diags),
 		ExtensionIDs:      flattenResolvedExtensionIDs(pool, &diags),
 		ProxyID:           flattenOptionalString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
 		Headless:          flattenOptionalBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),

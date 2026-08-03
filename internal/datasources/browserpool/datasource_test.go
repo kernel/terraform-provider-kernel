@@ -48,7 +48,7 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 
 	var schema datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute", "viewport", "chrome_policy"} {
+	for _, name := range []string{"id", "name", "project_id", "size", "profile_id", "refresh_on_profile_update", "extension_ids", "proxy_id", "headless", "kiosk_mode", "stealth", "start_url", "timeout_seconds", "fill_rate_per_minute", "viewport", "chrome_policy"} {
 		if _, ok := schema.Schema.Attributes[name]; !ok {
 			t.Fatalf("schema missing %s", name)
 		}
@@ -85,6 +85,7 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "project_id", true, false)
 	assertAttributeMode(t, resp.Schema, "size", false, true)
 	assertAttributeMode(t, resp.Schema, "profile_id", false, true)
+	assertAttributeMode(t, resp.Schema, "refresh_on_profile_update", false, true)
 	assertAttributeMode(t, resp.Schema, "extension_ids", false, true)
 	assertAttributeMode(t, resp.Schema, "proxy_id", false, true)
 	assertAttributeMode(t, resp.Schema, "headless", false, true)
@@ -211,6 +212,7 @@ func TestReadSetsTerraformState(t *testing.T) {
 					"headless":true,
 					"kiosk_mode":false,
 					"stealth":true,
+					"refresh_on_profile_update":true,
 					"start_url":"chrome://newtab",
 					"timeout_seconds":10,
 					"fill_rate_per_minute":0,
@@ -251,6 +253,9 @@ func TestReadSetsTerraformState(t *testing.T) {
 	assertBrowserPoolStringList(t, state.ExtensionIDs, nil)
 	if state.ProxyID.ValueString() != "proxy-1" || !state.Headless.ValueBool() || state.KioskMode.IsNull() || state.KioskMode.ValueBool() || !state.Stealth.ValueBool() {
 		t.Fatalf("launch state = %#v", state)
+	}
+	if !state.RefreshOnProfile.ValueBool() {
+		t.Fatal("refresh_on_profile_update = false, want true")
 	}
 	if state.StartURL.ValueString() != "chrome://newtab" || state.TimeoutSeconds.ValueInt64() != 10 || state.FillRatePerMinute.IsNull() || state.FillRatePerMinute.IsUnknown() || state.FillRatePerMinute.ValueInt64() != 0 {
 		t.Fatalf("warmup state = %#v", state)
@@ -407,6 +412,11 @@ func TestFlattenBrowserPoolRejectsInvalidWarmupConfiguration(t *testing.T) {
 func TestFlattenBrowserPoolLaunchConfiguration(t *testing.T) {
 	t.Parallel()
 
+	omitted, diags := flattenBrowserPool(*browserPoolFromJSON(`{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1}}`))
+	if diags.HasError() || !omitted.RefreshOnProfile.IsNull() {
+		t.Fatalf("omitted refresh_on_profile_update = %v, diagnostics = %v", omitted.RefreshOnProfile, diags)
+	}
+
 	state, diags := flattenBrowserPool(*browserPoolFromJSON(`{
 		"id":"pool-1",
 		"extension_ids":[],
@@ -415,7 +425,8 @@ func TestFlattenBrowserPoolLaunchConfiguration(t *testing.T) {
 			"proxy_id":"proxy-1",
 			"headless":true,
 			"kiosk_mode":false,
-			"stealth":true
+			"stealth":true,
+			"refresh_on_profile_update":false
 		}
 	}`))
 	if diags.HasError() {
@@ -433,21 +444,26 @@ func TestFlattenBrowserPoolLaunchConfiguration(t *testing.T) {
 	if !state.Stealth.ValueBool() {
 		t.Fatal("stealth = false, want true")
 	}
+	if state.RefreshOnProfile.IsNull() || state.RefreshOnProfile.ValueBool() {
+		t.Fatalf("refresh_on_profile_update = %v, want known false", state.RefreshOnProfile)
+	}
 }
 
 func TestFlattenBrowserPoolRejectsInvalidLaunchConfiguration(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		"empty proxy ID":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":""}}`,
-		"null proxy ID":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":null}}`,
-		"non-string proxy":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":1}}`,
-		"null headless":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":null}}`,
-		"non-bool headless": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":"true"}}`,
-		"null kiosk":        `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":null}}`,
-		"non-bool kiosk":    `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":1}}`,
-		"null stealth":      `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":null}}`,
-		"non-bool stealth":  `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":{}}}`,
+		"empty proxy ID":           `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":""}}`,
+		"null proxy ID":            `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":null}}`,
+		"non-string proxy":         `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"proxy_id":1}}`,
+		"null headless":            `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":null}}`,
+		"non-bool headless":        `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"headless":"true"}}`,
+		"null kiosk":               `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":null}}`,
+		"non-bool kiosk":           `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"kiosk_mode":1}}`,
+		"null stealth":             `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":null}}`,
+		"non-bool stealth":         `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"stealth":{}}}`,
+		"null profile refresh":     `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"refresh_on_profile_update":null}}`,
+		"non-bool profile refresh": `{"id":"pool-1","extension_ids":[],"browser_pool_config":{"size":1,"refresh_on_profile_update":"false"}}`,
 	}
 
 	for name, body := range tests {
@@ -649,38 +665,40 @@ func browserPoolConfigValue(id, name, projectID tftypes.Value) tftypes.Value {
 	}}
 	return tftypes.NewValue(
 		tftypes.Object{AttributeTypes: map[string]tftypes.Type{
-			"id":                   tftypes.String,
-			"name":                 tftypes.String,
-			"project_id":           tftypes.String,
-			"size":                 tftypes.Number,
-			"profile_id":           tftypes.String,
-			"extension_ids":        tftypes.List{ElementType: tftypes.String},
-			"proxy_id":             tftypes.String,
-			"headless":             tftypes.Bool,
-			"kiosk_mode":           tftypes.Bool,
-			"stealth":              tftypes.Bool,
-			"start_url":            tftypes.String,
-			"timeout_seconds":      tftypes.Number,
-			"fill_rate_per_minute": tftypes.Number,
-			"viewport":             viewportType,
-			"chrome_policy":        tftypes.String,
+			"id":                        tftypes.String,
+			"name":                      tftypes.String,
+			"project_id":                tftypes.String,
+			"size":                      tftypes.Number,
+			"profile_id":                tftypes.String,
+			"refresh_on_profile_update": tftypes.Bool,
+			"extension_ids":             tftypes.List{ElementType: tftypes.String},
+			"proxy_id":                  tftypes.String,
+			"headless":                  tftypes.Bool,
+			"kiosk_mode":                tftypes.Bool,
+			"stealth":                   tftypes.Bool,
+			"start_url":                 tftypes.String,
+			"timeout_seconds":           tftypes.Number,
+			"fill_rate_per_minute":      tftypes.Number,
+			"viewport":                  viewportType,
+			"chrome_policy":             tftypes.String,
 		}},
 		map[string]tftypes.Value{
-			"id":                   id,
-			"name":                 name,
-			"project_id":           projectID,
-			"size":                 tftypes.NewValue(tftypes.Number, nil),
-			"profile_id":           tftypes.NewValue(tftypes.String, nil),
-			"extension_ids":        tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
-			"proxy_id":             tftypes.NewValue(tftypes.String, nil),
-			"headless":             tftypes.NewValue(tftypes.Bool, nil),
-			"kiosk_mode":           tftypes.NewValue(tftypes.Bool, nil),
-			"stealth":              tftypes.NewValue(tftypes.Bool, nil),
-			"start_url":            tftypes.NewValue(tftypes.String, nil),
-			"timeout_seconds":      tftypes.NewValue(tftypes.Number, nil),
-			"fill_rate_per_minute": tftypes.NewValue(tftypes.Number, nil),
-			"viewport":             tftypes.NewValue(viewportType, nil),
-			"chrome_policy":        tftypes.NewValue(tftypes.String, nil),
+			"id":                        id,
+			"name":                      name,
+			"project_id":                projectID,
+			"size":                      tftypes.NewValue(tftypes.Number, nil),
+			"profile_id":                tftypes.NewValue(tftypes.String, nil),
+			"refresh_on_profile_update": tftypes.NewValue(tftypes.Bool, nil),
+			"extension_ids":             tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+			"proxy_id":                  tftypes.NewValue(tftypes.String, nil),
+			"headless":                  tftypes.NewValue(tftypes.Bool, nil),
+			"kiosk_mode":                tftypes.NewValue(tftypes.Bool, nil),
+			"stealth":                   tftypes.NewValue(tftypes.Bool, nil),
+			"start_url":                 tftypes.NewValue(tftypes.String, nil),
+			"timeout_seconds":           tftypes.NewValue(tftypes.Number, nil),
+			"fill_rate_per_minute":      tftypes.NewValue(tftypes.Number, nil),
+			"viewport":                  tftypes.NewValue(viewportType, nil),
+			"chrome_policy":             tftypes.NewValue(tftypes.String, nil),
 		},
 	)
 }
