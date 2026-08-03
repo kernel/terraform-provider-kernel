@@ -18,6 +18,9 @@ func BrowserPoolSchema() rschema.Schema {
 			"id": rschema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Unique browser pool identifier.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": rschema.StringAttribute{
 				Optional:            true,
