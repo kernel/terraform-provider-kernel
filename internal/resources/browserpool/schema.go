@@ -1,11 +1,14 @@
 package browserpool
 
 import (
+	"context"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -25,7 +28,10 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"name": rschema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional browser pool name. Must be unique within the project.",
+				MarkdownDescription: "Optional browser pool name. Must be unique within the project. Removing an existing name replaces the pool because the API cannot clear it in place.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(requiresReplaceOnStringClear, "Removing the configured value replaces the browser pool.", "Removing the configured value replaces the browser pool."),
+				},
 				Validators: []validator.String{
 					browserPoolNameValidator{},
 				},
@@ -55,7 +61,10 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"profile_id": rschema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional profile ID to load for browsers created by this pool.",
+				MarkdownDescription: "Optional profile ID to load for browsers created by this pool. Removing an existing profile replaces the pool because the API cannot clear it in place.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(requiresReplaceOnStringClear, "Removing the configured value replaces the browser pool.", "Removing the configured value replaces the browser pool."),
+				},
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -87,7 +96,10 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"viewport": rschema.SingleNestedAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional browser viewport.",
+				MarkdownDescription: "Optional browser viewport. Removing an existing viewport replaces the pool because the API cannot clear it in place.",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.RequiresReplaceIf(requiresReplaceOnObjectClear, "Removing the configured value replaces the browser pool.", "Removing the configured value replaces the browser pool."),
+				},
 				Attributes: map[string]rschema.Attribute{
 					"width": rschema.Int64Attribute{
 						Required:            true,
@@ -147,9 +159,9 @@ func BrowserPoolSchema() rschema.Schema {
 			"fill_rate_per_minute": rschema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Percentage of the pool to fill per minute.",
+				MarkdownDescription: "Percentage of the pool to fill per minute, from 0 through 50.",
 				Validators: []validator.Int64{
-					int64validator.AtLeast(minFillRatePerMinute),
+					int64validator.Between(minFillRatePerMinute, maxFillRatePerMinute),
 				},
 			},
 			"rebuild_idle_browsers_on_update": rschema.BoolAttribute{
@@ -160,4 +172,12 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 		},
 	}
+}
+
+func requiresReplaceOnStringClear(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	resp.RequiresReplace = req.PlanValue.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown()
+}
+
+func requiresReplaceOnObjectClear(_ context.Context, req planmodifier.ObjectRequest, resp *objectplanmodifier.RequiresReplaceIfFuncResponse) {
+	resp.RequiresReplace = req.PlanValue.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown()
 }

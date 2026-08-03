@@ -185,6 +185,38 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 	}
 }
 
+func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
+	s := BrowserPoolSchema()
+
+	for _, name := range []string{"name", "profile_id"} {
+		attr := stringAttribute(t, s, name)
+		_, requiresReplace := runStringPlanModifiers(t, attr,
+			types.StringValue("configured"), types.StringNull(), types.StringNull())
+		if !requiresReplace {
+			t.Fatalf("clearing %s must replace the pool", name)
+		}
+
+		_, requiresReplace = runStringPlanModifiers(t, attr,
+			types.StringValue("old"), types.StringValue("new"), types.StringValue("new"))
+		if requiresReplace {
+			t.Fatalf("changing %s to another value must remain an in-place update", name)
+		}
+	}
+
+	viewport := singleNestedAttribute(t, s, "viewport")
+	viewportValue := types.ObjectValueMust(
+		map[string]tfattr.Type{
+			"width": types.Int64Type, "height": types.Int64Type, "refresh_rate": types.Int64Type,
+		},
+		map[string]tfattr.Value{
+			"width": types.Int64Value(1280), "height": types.Int64Value(800), "refresh_rate": types.Int64Value(60),
+		},
+	)
+	if !runObjectPlanModifiers(t, viewport, viewportValue, types.ObjectNull(viewportValue.AttributeTypes(context.Background()))) {
+		t.Fatal("clearing viewport must replace the pool")
+	}
+}
+
 func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, plan, config types.String) (types.String, bool) {
 	t.Helper()
 
@@ -210,6 +242,26 @@ func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, p
 	return req.PlanValue, requiresReplace
 }
 
+func runObjectPlanModifiers(t *testing.T, attr rschema.SingleNestedAttribute, state, plan types.Object) bool {
+	t.Helper()
+
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.ObjectRequest{
+		State:      tfsdk.State{Raw: nonNullRaw},
+		Plan:       tfsdk.Plan{Raw: nonNullRaw},
+		StateValue: state,
+		PlanValue:  plan,
+	}
+
+	requiresReplace := false
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.ObjectResponse{PlanValue: req.PlanValue}
+		m.PlanModifyObject(context.Background(), req, resp)
+		requiresReplace = requiresReplace || resp.RequiresReplace
+	}
+	return requiresReplace
+}
+
 func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 	s := BrowserPoolSchema()
 
@@ -221,7 +273,8 @@ func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 	assertInt64Rejects(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 259201)
 	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", -1)
 	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 0)
-	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 100)
+	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 50)
+	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 51)
 
 	viewport := singleNestedAttribute(t, s, "viewport")
 	assertInt64Rejects(t, nestedInt64Attribute(t, viewport, "width"), "viewport.width", 0)
