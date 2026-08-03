@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
-func TestSchemaContainsOnlyDurableAttributes(t *testing.T) {
+func TestSchemaContainsOnlySupportedAttributes(t *testing.T) {
 	s := BrowserPoolSchema()
 
 	want := map[string]struct{}{
@@ -37,6 +37,7 @@ func TestSchemaContainsOnlyDurableAttributes(t *testing.T) {
 		"timeout_seconds":      {},
 		"fill_rate_per_minute": {},
 	}
+	want["rebuild_idle_browsers_on_update"] = struct{}{}
 
 	for name := range want {
 		if _, ok := s.Attributes[name]; !ok {
@@ -92,6 +93,9 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	})
 	assertInt64Attribute(t, s, "fill_rate_per_minute", func(attr rschema.Int64Attribute) bool {
 		return attr.Optional && attr.Computed && !attr.Required
+	})
+	assertBoolAttribute(t, s, "rebuild_idle_browsers_on_update", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required && attr.Default != nil
 	})
 
 	viewport := singleNestedAttribute(t, s, "viewport")

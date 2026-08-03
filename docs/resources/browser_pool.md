@@ -30,6 +30,7 @@ Kernel browser pool durable configuration.
 - `profile_id` (String) Optional profile ID to load for browsers created by this pool.
 - `project_id` (String) Project this browser pool belongs to. Defaults to the provider `project_id` when unset; when neither is set, the API key's project binding determines the project. Once created the pool keeps its project, and changing this attribute replaces the pool.
 - `proxy_id` (String) Optional proxy ID to use for browsers created by this pool.
+- `rebuild_idle_browsers_on_update` (Boolean) When true, browser launch configuration changes discard browsers that are idle when the update runs so replacements use the new configuration. Defaults to false. Browsers that are warming or currently leased are not rebuilt.
 - `start_url` (String) Optional URL to navigate to when a browser is warmed into the pool.
 - `stealth` (Boolean) Launch browsers in stealth mode.
 - `timeout_seconds` (Number) Default idle timeout in seconds for acquired browsers.

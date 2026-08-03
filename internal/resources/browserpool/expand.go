@@ -108,6 +108,12 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 	}
 
 	var params kernel.BrowserPoolUpdateParams
+	if isKnownBool(plan.RebuildIdle) && plan.RebuildIdle.ValueBool() && browserLaunchConfigurationChanged(plan, state) {
+		// Pool updates change the template for future browsers. Rebuild browsers
+		// that are idle now only when the customer explicitly opts into the
+		// disruptive replacement behavior.
+		params.DiscardAllIdle = kernel.Bool(true)
+	}
 
 	if !plan.Name.Equal(state.Name) && isKnownString(plan.Name) {
 		params.Name = kernel.String(plan.Name.ValueString())
@@ -149,7 +155,7 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 			params.ChromePolicy = policy
 		}
 	}
-	if !plan.Viewport.Equal(state.Viewport) && !plan.Viewport.IsNull() {
+	if browserViewportChanged(plan.Viewport, state.Viewport) && !plan.Viewport.IsNull() {
 		viewport, viewportDiags := expandViewport(ctx, plan.Viewport)
 		diags.Append(viewportDiags...)
 		if diags.HasError() {
@@ -183,6 +189,44 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 	return params, diags
 }
 
+func browserLaunchConfigurationChanged(plan, state browserPoolModel) bool {
+	return !plan.ProfileID.Equal(state.ProfileID) ||
+		!plan.ProxyID.Equal(state.ProxyID) ||
+		!plan.ExtensionIDs.Equal(state.ExtensionIDs) ||
+		!plan.ChromePolicy.Equal(state.ChromePolicy) ||
+		browserViewportChanged(plan.Viewport, state.Viewport) ||
+		knownBoolChanged(plan.Headless, state.Headless) ||
+		knownBoolChanged(plan.KioskMode, state.KioskMode) ||
+		knownBoolChanged(plan.Stealth, state.Stealth) ||
+		!plan.StartURL.Equal(state.StartURL)
+}
+
+func knownBoolChanged(plan, state types.Bool) bool {
+	// Optional+Computed values can legitimately be unknown during planning.
+	// Unknown means "not decided yet", not "different from state".
+	return isKnownBool(plan) && !plan.Equal(state)
+}
+
+func browserViewportChanged(plan, state types.Object) bool {
+	if plan.IsUnknown() {
+		return false
+	}
+	if plan.IsNull() || state.IsNull() || state.IsUnknown() {
+		return !plan.Equal(state)
+	}
+
+	planAttrs := plan.Attributes()
+	stateAttrs := state.Attributes()
+	for _, name := range []string{"width", "height"} {
+		if !planAttrs[name].Equal(stateAttrs[name]) {
+			return true
+		}
+	}
+
+	planRefreshRate := planAttrs["refresh_rate"].(types.Int64)
+	return !planRefreshRate.IsUnknown() && !planRefreshRate.Equal(stateAttrs["refresh_rate"])
+}
+
 func validateCreateKnownValues(diags *diag.Diagnostics, model browserPoolModel) {
 	requireKnownOptional(diags, path.Root("name"), model.Name, "creating")
 	requireKnownOptional(diags, path.Root("profile_id"), model.ProfileID, "creating")
@@ -201,6 +245,7 @@ func validateUpdateKnownValues(diags *diag.Diagnostics, model browserPoolModel) 
 	requireKnownOptional(diags, path.Root("extension_ids"), model.ExtensionIDs, "updating")
 	requireKnownOptional(diags, path.Root("viewport"), model.Viewport, "updating")
 	requireKnownOptional(diags, path.Root("start_url"), model.StartURL, "updating")
+	requireKnownOptional(diags, path.Root("rebuild_idle_browsers_on_update"), model.RebuildIdle, "updating")
 }
 
 func validateSupportedUpdateClears(diags *diag.Diagnostics, plan, state browserPoolModel) {

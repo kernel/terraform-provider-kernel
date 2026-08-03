@@ -9,6 +9,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	kernel "github.com/kernel/kernel-go-sdk"
+	"github.com/kernel/kernel-go-sdk/option"
 	"github.com/kernel/terraform-provider-kernel/internal/acctest"
 )
 
@@ -18,7 +20,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 	name := acctest.UniqueName(t, "browser-pool")
 	var poolID string
 
-	updatedConfig := testAccBrowserPoolConfig(name, "https://example.com/two")
+	updatedConfig := testAccBrowserPoolConfig(name, "https://example.com/two", true)
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(t)
@@ -27,9 +29,10 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 		CheckDestroy:             testAccCheckBrowserPoolDestroyed(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccBrowserPoolConfig(name, "https://example.com/one"),
+				Config: testAccBrowserPoolConfig(name, "https://example.com/one", false),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCaptureBrowserPoolID(t, browserPoolResourceName, &poolID),
+					testAccWaitForAvailableBrowser(browserPoolResourceName),
 					testAccCheckBrowserPoolProject(browserPoolResourceName, os.Getenv(acctest.EnvProjectID)),
 					resource.TestCheckResourceAttrSet(browserPoolResourceName, "id"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "name", name),
@@ -40,6 +43,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(browserPoolResourceName, "stealth", "false"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "timeout_seconds", "90"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "fill_rate_per_minute", "0"),
+					resource.TestCheckResourceAttr(browserPoolResourceName, "rebuild_idle_browsers_on_update", "true"),
 				),
 			},
 			{
@@ -50,6 +54,9 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(browserPoolResourceName, "name", name),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "size", "1"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "start_url", "https://example.com/two"),
+					resource.TestCheckResourceAttr(browserPoolResourceName, "stealth", "true"),
+					resource.TestCheckResourceAttr(browserPoolResourceName, "rebuild_idle_browsers_on_update", "true"),
+					testAccCheckAcquiredBrowserStealth(t, browserPoolResourceName, true),
 				),
 			},
 			{
@@ -57,12 +64,44 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 				PlanOnly: true,
 			},
 			{
-				ResourceName:      browserPoolResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            browserPoolResourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"rebuild_idle_browsers_on_update"},
 			},
 		},
 	})
+}
+
+func testAccWaitForAvailableBrowser(resourceName string) resource.TestCheckFunc {
+	return func(state *terraform.State) error {
+		poolID, projectID, err := browserPoolStateValues(state, resourceName)
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		client := acctest.ClientFromEnv()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			pool, err := client.GetBrowserPool(ctx, projectID, poolID)
+			if err != nil {
+				return fmt.Errorf("wait for idle browser in Kernel pool %s: %w", poolID, err)
+			}
+			if pool != nil && pool.AvailableCount > 0 {
+				return nil
+			}
+
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("wait for idle browser in Kernel pool %s: %w", poolID, ctx.Err())
+			case <-ticker.C:
+			}
+		}
+	}
 }
 
 func TestAccBrowserPoolProjectScoped(t *testing.T) {
@@ -124,7 +163,7 @@ resource "kernel_browser_pool" "test" {
 `, name, projectID)
 }
 
-func testAccBrowserPoolConfig(name, startURL string) string {
+func testAccBrowserPoolConfig(name, startURL string, stealth bool) string {
 	return acctest.ProviderConfig() + fmt.Sprintf(`
 resource "kernel_browser_pool" "test" {
   name                 = %[1]q
@@ -132,11 +171,58 @@ resource "kernel_browser_pool" "test" {
   start_url            = %[2]q
   headless             = true
   kiosk_mode           = false
-  stealth              = false
+  stealth              = %[3]t
   timeout_seconds      = 90
   fill_rate_per_minute = 0
+  rebuild_idle_browsers_on_update = true
 }
-`, name, startURL)
+`, name, startURL, stealth)
+}
+
+func testAccCheckAcquiredBrowserStealth(t *testing.T, resourceName string, want bool) resource.TestCheckFunc {
+	t.Helper()
+
+	return func(state *terraform.State) error {
+		poolID, projectID, err := browserPoolStateValues(state, resourceName)
+		if err != nil {
+			return err
+		}
+
+		opts := []option.RequestOption{
+			option.WithEnvironmentProduction(),
+			option.WithAPIKey(os.Getenv(acctest.EnvAPIKey)),
+		}
+		if baseURL := os.Getenv(acctest.EnvBaseURL); baseURL != "" {
+			opts = append(opts, option.WithBaseURL(baseURL))
+		}
+		requestOpts := []option.RequestOption{option.WithProjectID(projectID)}
+		client := kernel.NewClient(opts...)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		browser, err := client.BrowserPools.Acquire(ctx, poolID, kernel.BrowserPoolAcquireParams{
+			AcquireTimeoutSeconds: kernel.Int(90),
+		}, requestOpts...)
+		if err != nil {
+			return fmt.Errorf("acquire browser from updated Kernel pool %s: %w", poolID, err)
+		}
+		if browser == nil {
+			return fmt.Errorf("acquire browser from updated Kernel pool %s returned no browser", poolID)
+		}
+		defer func() {
+			if err := client.BrowserPools.Release(ctx, poolID, kernel.BrowserPoolReleaseParams{
+				SessionID: browser.SessionID,
+				Reuse:     kernel.Bool(false),
+			}, requestOpts...); err != nil {
+				t.Errorf("release acceptance browser %s: %v", browser.SessionID, err)
+			}
+		}()
+
+		if browser.Stealth != want {
+			return fmt.Errorf("acquired browser stealth = %t, want %t after pool update", browser.Stealth, want)
+		}
+		return nil
+	}
 }
 
 func testAccCaptureBrowserPoolID(t *testing.T, resourceName string, poolID *string) resource.TestCheckFunc {

@@ -14,7 +14,9 @@ sources. It does not claim coverage for future or unregistered Kernel objects.
 - Register cleanup as soon as a canonical ID exists.
 - Verify deletion through a follow-up API read.
 - Keep browser-pool deletion non-forceful.
-- Never acquire, release, flush, invoke, or recover runtime state.
+- Do not exercise runtime state except for the browser-pool update regression,
+  which explicitly enables `rebuild_idle_browsers_on_update`, acquires one
+  replacement, and releases it with `reuse=false`.
 - Keep live tests out of pull-request CI.
 - Run the complete matrix against the release commit before tagging.
 
@@ -37,7 +39,7 @@ sources. The project resource is organization-scoped and does not require it.
 | Surface | Package | Live scenario |
 | --- | --- | --- |
 | `kernel_project` resource | `./internal/resources/project` | Create, rename with stable ID, no-drift plan, canonical-ID import, post-import no drift, delete, and HTTP 404 verification. |
-| `kernel_browser_pool` resource | `./internal/resources/browserpool` | Create, durable update with stable ID, no-drift plan, provider-default and explicit project scope, bare and project-qualified import, non-force delete, and HTTP 404 verification. |
+| `kernel_browser_pool` resource | `./internal/resources/browserpool` | Create, durable update with stable ID, opt into rebuilding and acquire an idle browser after a configuration change, no-drift plan, provider-default and explicit project scope, bare and project-qualified import, non-force delete, and HTTP 404 verification. |
 | `kernel_project` data source | `./internal/datasources/project` | Create a unique project fixture, read it by ID and exact name, read the provider-default project, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_profile` data source | `./internal/datasources/profile` | Create a durable profile fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_proxy` data source | `./internal/datasources/proxy` | Create a managed datacenter proxy fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable masked metadata and no drift, then delete and require coded `not_found`. |

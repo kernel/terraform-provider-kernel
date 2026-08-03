@@ -18,6 +18,7 @@ type browserPoolModel struct {
 	StartURL          types.String      `tfsdk:"start_url"`
 	TimeoutSeconds    types.Int64       `tfsdk:"timeout_seconds"`
 	FillRatePerMinute types.Int64       `tfsdk:"fill_rate_per_minute"`
+	RebuildIdle       types.Bool        `tfsdk:"rebuild_idle_browsers_on_update"`
 }
 
 type viewportModel struct {

@@ -331,6 +331,86 @@ func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
 	}
 }
 
+func TestExpandUpdateParamsRebuildsIdleBrowsersWhenOptedIn(t *testing.T) {
+	state := browserPoolModel{
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
+	plan := state
+	plan.Stealth = types.BoolValue(true)
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"discard_all_idle": true,
+		"stealth":          true,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersForNonLaunchChanges(t *testing.T) {
+	state := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
+	plan := state
+	plan.Name = types.StringValue("pool-b")
+	plan.Size = types.Int64Value(2)
+	plan.FillRatePerMinute = types.Int64Value(20)
+	plan.TimeoutSeconds = types.Int64Value(120)
+	plan.Headless = types.BoolUnknown()
+	plan.KioskMode = types.BoolUnknown()
+	plan.Stealth = types.BoolUnknown()
+	plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Unknown())
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"name":                 "pool-b",
+		"size":                 float64(2),
+		"fill_rate_per_minute": float64(20),
+		"timeout_seconds":      float64(120),
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
 func TestExpandUpdateParamsOmitsUnchangedDurableConfig(t *testing.T) {
 	model := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
@@ -374,6 +454,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 		StartURL:          types.StringNull(),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
@@ -389,6 +470,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 		StartURL:          types.StringValue("https://example.com"),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
 	params, diags := expandUpdateParams(context.Background(), plan, state)
@@ -398,10 +480,11 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
-		"proxy_id":      "",
-		"extensions":    []any{},
-		"chrome_policy": map[string]any{},
-		"start_url":     "",
+		"discard_all_idle": true,
+		"proxy_id":         "",
+		"extensions":       []any{},
+		"chrome_policy":    map[string]any{},
+		"start_url":        "",
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
@@ -456,8 +539,9 @@ func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 	// Mirrors the create path: an unknown size must not short-circuit the
 	// optional-unknown checks, so every problem surfaces in one apply cycle.
 	plan := browserPoolModel{
-		Size: types.Int64Unknown(),
-		Name: types.StringUnknown(),
+		Size:        types.Int64Unknown(),
+		Name:        types.StringUnknown(),
+		RebuildIdle: types.BoolUnknown(),
 	}
 	state := browserPoolModel{
 		Size: types.Int64Value(1),
@@ -468,7 +552,7 @@ func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unknown size and optionals")
 	}
-	for _, want := range []path.Path{path.Root("size"), path.Root("name")} {
+	for _, want := range []path.Path{path.Root("size"), path.Root("name"), path.Root("rebuild_idle_browsers_on_update")} {
 		if !hasDiagnosticPath(diags, want) {
 			t.Fatalf("expected diagnostic at %s, got %v", want, diags)
 		}

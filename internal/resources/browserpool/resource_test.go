@@ -512,6 +512,7 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		ID:                types.StringValue("pool-1"),
@@ -529,6 +530,7 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
 	var calls []string
@@ -585,8 +587,9 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	}
 	body := marshalSDKParams(t, gotParams)
 	want := map[string]any{
-		"size":      float64(2),
-		"start_url": "https://new.example",
+		"discard_all_idle": true,
+		"size":             float64(2),
+		"start_url":        "https://new.example",
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)
@@ -599,6 +602,9 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	}
 	if nextState.StartURL.ValueString() != "https://new.example" {
 		t.Fatalf("start_url = %q, want https://new.example", nextState.StartURL.ValueString())
+	}
+	if !nextState.RebuildIdle.ValueBool() {
+		t.Fatal("rebuild_idle_browsers_on_update = false, want true preserved from configuration")
 	}
 }
 
@@ -615,6 +621,7 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		ID:                types.StringValue("pool-1"),
@@ -627,6 +634,7 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
 	var gotParams kernel.BrowserPoolUpdateParams
@@ -666,8 +674,9 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 
 	body := marshalSDKParams(t, gotParams)
 	want := map[string]any{
-		"extensions":    []any{},
-		"chrome_policy": map[string]any{},
+		"discard_all_idle": true,
+		"extensions":       []any{},
+		"chrome_policy":    map[string]any{},
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)
