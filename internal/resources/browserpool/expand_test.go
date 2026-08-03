@@ -366,6 +366,35 @@ func TestExpandUpdateParamsRebuildsIdleBrowsersWhenOptedIn(t *testing.T) {
 	}
 }
 
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWhenDisabled(t *testing.T) {
+	state := updateModelForTest()
+	plan := state
+	plan.Stealth = types.BoolValue(true)
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"stealth": true}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWithoutLaunchChanges(t *testing.T) {
+	state := updateModelForTest()
+	plan := state
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
 func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
 	state := browserPoolModel{
 		ProfileID:    types.StringValue("profile-1"),
@@ -421,6 +450,54 @@ func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
 			if !browserLaunchConfigurationChanged(plan, state) {
 				t.Fatal("launch configuration change was not detected")
 			}
+		})
+	}
+}
+
+func TestBrowserViewportChangedFromNullToConfigured(t *testing.T) {
+	plan := viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+	state := types.ObjectNull(viewportAttrTypes())
+
+	if !browserViewportChanged(plan, state) {
+		t.Fatal("null to configured viewport change was not detected")
+	}
+}
+
+func TestExpandUpdateParamsRejectsUnknownViewportDimensions(t *testing.T) {
+	state := updateModelForTest()
+	state.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+	tests := map[string]struct {
+		viewport types.Object
+		path     path.Path
+	}{
+		"width": {
+			viewport: viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60)),
+			path:     path.Root("viewport").AtName("width"),
+		},
+		"height": {
+			viewport: viewportObjectForTest(types.Int64Value(1280), types.Int64Unknown(), types.Int64Value(60)),
+			path:     path.Root("viewport").AtName("height"),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan := state
+			plan.Viewport = test.viewport
+			plan.RebuildIdle = types.BoolValue(true)
+
+			if plan.Viewport.IsUnknown() {
+				t.Fatal("viewport object is unknown, want a known object with an unknown dimension")
+			}
+
+			params, diags := expandUpdateParams(context.Background(), plan, state)
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics for unknown viewport dimension")
+			}
+			if !hasDiagnosticPath(diags, test.path) {
+				t.Fatalf("expected diagnostic at %s, got %v", test.path, diags)
+			}
+			assertEmptyUpdateSDKParams(t, params)
 		})
 	}
 }
@@ -693,6 +770,25 @@ func viewportObjectForTest(width, height, refreshRate types.Int64) types.Object 
 			"refresh_rate": refreshRate,
 		},
 	)
+}
+
+func updateModelForTest() browserPoolModel {
+	return browserPoolModel{
+		Name:              types.StringNull(),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
 }
 
 func marshalSDKParams(t *testing.T, params any) map[string]any {

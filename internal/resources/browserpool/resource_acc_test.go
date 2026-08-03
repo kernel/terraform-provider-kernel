@@ -80,7 +80,7 @@ func testAccWaitForAvailableBrowser(resourceName string) resource.TestCheckFunc 
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		client := acctest.ClientFromEnv()
 		ticker := time.NewTicker(500 * time.Millisecond)
@@ -166,14 +166,14 @@ resource "kernel_browser_pool" "test" {
 func testAccBrowserPoolConfig(name, startURL string, stealth bool) string {
 	return acctest.ProviderConfig() + fmt.Sprintf(`
 resource "kernel_browser_pool" "test" {
-  name                 = %[1]q
-  size                 = 1
-  start_url            = %[2]q
-  headless             = true
-  kiosk_mode           = false
-  stealth              = %[3]t
-  timeout_seconds      = 90
-  fill_rate_per_minute = 0
+  name                            = %[1]q
+  size                            = 1
+  start_url                       = %[2]q
+  headless                        = true
+  kiosk_mode                      = false
+  stealth                         = %[3]t
+  timeout_seconds                 = 90
+  fill_rate_per_minute            = 0
   rebuild_idle_browsers_on_update = true
 }
 `, name, startURL, stealth)
@@ -191,6 +191,7 @@ func testAccCheckAcquiredBrowserStealth(t *testing.T, resourceName string, want 
 		opts := []option.RequestOption{
 			option.WithEnvironmentProduction(),
 			option.WithAPIKey(os.Getenv(acctest.EnvAPIKey)),
+			option.WithMaxRetries(0),
 		}
 		if baseURL := os.Getenv(acctest.EnvBaseURL); baseURL != "" {
 			opts = append(opts, option.WithBaseURL(baseURL))

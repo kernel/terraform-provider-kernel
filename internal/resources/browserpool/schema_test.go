@@ -22,23 +22,23 @@ func TestSchemaContainsOnlySupportedAttributes(t *testing.T) {
 	s := BrowserPoolSchema()
 
 	want := map[string]struct{}{
-		"id":                   {},
-		"name":                 {},
-		"project_id":           {},
-		"size":                 {},
-		"profile_id":           {},
-		"proxy_id":             {},
-		"extension_ids":        {},
-		"chrome_policy":        {},
-		"viewport":             {},
-		"headless":             {},
-		"kiosk_mode":           {},
-		"stealth":              {},
-		"start_url":            {},
-		"timeout_seconds":      {},
-		"fill_rate_per_minute": {},
+		"id":                              {},
+		"name":                            {},
+		"project_id":                      {},
+		"size":                            {},
+		"profile_id":                      {},
+		"proxy_id":                        {},
+		"extension_ids":                   {},
+		"chrome_policy":                   {},
+		"viewport":                        {},
+		"headless":                        {},
+		"kiosk_mode":                      {},
+		"stealth":                         {},
+		"start_url":                       {},
+		"timeout_seconds":                 {},
+		"fill_rate_per_minute":            {},
+		"rebuild_idle_browsers_on_update": {},
 	}
-	want["rebuild_idle_browsers_on_update"] = struct{}{}
 
 	for name := range want {
 		if _, ok := s.Attributes[name]; !ok {

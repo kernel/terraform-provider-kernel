@@ -156,7 +156,7 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "When true, browser launch configuration changes discard browsers that are idle when the update runs so replacements use the new configuration. Defaults to false. Browsers that are warming or currently leased are not rebuilt.",
+				MarkdownDescription: "When true, changes to profile_id, proxy_id, extension_ids, chrome_policy, viewport, headless, kiosk_mode, stealth, or start_url discard browsers that are idle when the update runs so replacements use the new configuration. Browsers that are warming or currently leased are not rebuilt. Kernel does not store this provider-local setting, so imported browser pools default to false unless configured otherwise.",
 			},
 		},
 	}

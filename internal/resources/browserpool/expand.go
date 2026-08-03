@@ -190,6 +190,8 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 }
 
 func browserLaunchConfigurationChanged(plan, state browserPoolModel) bool {
+	// Keep this list aligned with the launch fields patched above and covered by
+	// TestBrowserLaunchConfigurationChangedForEachLaunchField.
 	return !plan.ProfileID.Equal(state.ProfileID) ||
 		!plan.ProxyID.Equal(state.ProxyID) ||
 		!plan.ExtensionIDs.Equal(state.ExtensionIDs) ||
