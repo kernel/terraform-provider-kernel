@@ -40,6 +40,10 @@ type browserPoolModel struct {
 	Size         types.Int64  `tfsdk:"size"`
 	ProfileID    types.String `tfsdk:"profile_id"`
 	ExtensionIDs types.List   `tfsdk:"extension_ids"`
+	ProxyID      types.String `tfsdk:"proxy_id"`
+	Headless     types.Bool   `tfsdk:"headless"`
+	KioskMode    types.Bool   `tfsdk:"kiosk_mode"`
+	Stealth      types.Bool   `tfsdk:"stealth"`
 }
 
 func NewDataSource() datasource.DataSource {
@@ -87,6 +91,22 @@ func (d *browserPoolDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Resolved extension IDs attached to the pool, in load order.",
+			},
+			"proxy_id": dschema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Proxy ID attached to browsers in the pool, if any.",
+			},
+			"headless": dschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether browsers use a headless image.",
+			},
+			"kiosk_mode": dschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether browsers launch in kiosk mode.",
+			},
+			"stealth": dschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether browsers launch in stealth mode.",
 			},
 		},
 	}
@@ -214,13 +234,40 @@ func flattenBrowserPool(pool kernel.BrowserPool) (browserPoolModel, diag.Diagnos
 		return browserPoolModel{}, diags
 	}
 
+	config := pool.BrowserPoolConfig
 	return browserPoolModel{
 		ID:           types.StringValue(pool.ID),
 		Name:         name,
-		Size:         types.Int64Value(pool.BrowserPoolConfig.Size),
+		Size:         types.Int64Value(config.Size),
 		ProfileID:    flattenResolvedProfileID(pool, &diags),
 		ExtensionIDs: flattenResolvedExtensionIDs(pool, &diags),
+		ProxyID:      flattenOptionalString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
+		Headless:     flattenOptionalBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
+		KioskMode:    flattenOptionalBool("browser_pool_config.kiosk_mode", config.JSON.KioskMode.Raw(), config.JSON.KioskMode.Valid(), config.KioskMode, &diags),
+		Stealth:      flattenOptionalBool("browser_pool_config.stealth", config.JSON.Stealth.Raw(), config.JSON.Stealth.Valid(), config.Stealth, &diags),
 	}, diags
+}
+
+func flattenOptionalString(field, raw string, valid bool, value string, diags *diag.Diagnostics) types.String {
+	if raw == "" {
+		return types.StringNull()
+	}
+	if !datasources.ValidResponseString(raw, valid, value) {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", field)
+		return types.StringNull()
+	}
+	return types.StringValue(value)
+}
+
+func flattenOptionalBool(field, raw string, valid bool, value bool, diags *diag.Diagnostics) types.Bool {
+	if raw == "" {
+		return types.BoolNull()
+	}
+	if !validResponseBool(raw, valid, value) {
+		datasources.AddInvalidResponseField(diags, "Browser Pool", field)
+		return types.BoolNull()
+	}
+	return types.BoolValue(value)
 }
 
 func flattenResolvedProfileID(pool kernel.BrowserPool, diags *diag.Diagnostics) types.String {
@@ -301,5 +348,13 @@ func validResponseInt64(raw string, valid bool, value int64) bool {
 		return false
 	}
 	var decoded int64
+	return json.Unmarshal([]byte(raw), &decoded) == nil && decoded == value
+}
+
+func validResponseBool(raw string, valid bool, value bool) bool {
+	if !datasources.FieldPresent(raw) || !valid {
+		return false
+	}
+	var decoded bool
 	return json.Unmarshal([]byte(raw), &decoded) == nil && decoded == value
 }
