@@ -80,28 +80,28 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	var resp datasource.SchemaResponse
 	ds.Schema(context.Background(), datasource.SchemaRequest{}, &resp)
 
-	id, ok := resp.Schema.Attributes["id"].(dschema.StringAttribute)
-	if !ok || !id.Optional || !id.Computed || id.Required {
-		t.Fatalf("id must be an optional, computed string: %#v", resp.Schema.Attributes["id"])
-	}
-	name, ok := resp.Schema.Attributes["name"].(dschema.StringAttribute)
-	if !ok || !name.Optional || !name.Computed || name.Required {
-		t.Fatalf("name must be an optional, computed string: %#v", resp.Schema.Attributes["name"])
-	}
-	projectID, ok := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
-	if !ok || !projectID.Optional || projectID.Computed || projectID.Required {
-		t.Fatalf("project_id must be an optional string: %#v", resp.Schema.Attributes["project_id"])
-	}
-	size, ok := resp.Schema.Attributes["size"].(dschema.Int64Attribute)
-	if !ok || !size.Computed || size.Optional || size.Required {
-		t.Fatalf("size must be a computed integer: %#v", resp.Schema.Attributes["size"])
-	}
+	assertAttributeMode(t, resp.Schema, "id", true, true)
+	assertAttributeMode(t, resp.Schema, "name", true, true)
+	assertAttributeMode(t, resp.Schema, "project_id", true, false)
+	assertAttributeMode(t, resp.Schema, "size", false, true)
 
+	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
 		t.Fatal("project_id accepted an empty string")
 	}
 	if diags := validateProjectID(projectID.Validators, "project-1"); diags.HasError() {
 		t.Fatalf("project_id rejected a non-empty string: %v", diags)
+	}
+}
+
+func assertAttributeMode(t *testing.T, schema dschema.Schema, name string, optional, computed bool) {
+	t.Helper()
+	attribute, ok := schema.Attributes[name]
+	if !ok {
+		t.Fatalf("schema missing %s", name)
+	}
+	if attribute.IsOptional() != optional || attribute.IsComputed() != computed || attribute.IsRequired() {
+		t.Fatalf("%s has unexpected schema mode: %#v", name, attribute)
 	}
 }
 
