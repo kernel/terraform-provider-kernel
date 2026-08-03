@@ -495,6 +495,28 @@ func TestReadBrowserPoolRejectsEmptyStateID(t *testing.T) {
 	}
 }
 
+func TestUpdateBrowserPoolPersistsLocalPreferenceWithoutAPICall(t *testing.T) {
+	t.Parallel()
+
+	state := updateModelForTest()
+	state.ID = types.StringValue("pool-1")
+	state.ProjectID = types.StringValue("proj_a")
+	plan := state
+	plan.RebuildIdle = types.BoolValue(true)
+
+	r := newResourceWithClient(fakeBrowserPoolClient{})
+	nextState, diags := r.update(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !nextState.RebuildIdle.ValueBool() {
+		t.Fatal("rebuild_idle_browsers_on_update = false, want local preference persisted")
+	}
+	if !nextState.ID.Equal(state.ID) || !nextState.ProjectID.Equal(state.ProjectID) {
+		t.Fatal("local preference update changed browser pool identity")
+	}
+}
+
 func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	t.Parallel()
 

@@ -216,10 +216,14 @@ func (r *browserPoolResource) update(ctx context.Context, plan, state browserPoo
 		return browserPoolModel{}, diags
 	}
 
-	params, expandDiags := expandUpdateParams(ctx, plan, state)
+	params, hasPatch, expandDiags := expandUpdateParams(ctx, plan, state)
 	diags.Append(expandDiags...)
 	if diags.HasError() {
 		return browserPoolModel{}, diags
+	}
+	if !hasPatch {
+		state.RebuildIdle = plan.RebuildIdle
+		return state, diags
 	}
 
 	// Project changes replace the pool, so plan and state agree on the project here.

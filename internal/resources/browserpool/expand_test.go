@@ -305,7 +305,7 @@ func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -351,7 +351,7 @@ func TestExpandUpdateParamsRebuildsIdleBrowsersWhenOptedIn(t *testing.T) {
 	plan.Stealth = types.BoolValue(true)
 	plan.RebuildIdle = types.BoolValue(true)
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -371,9 +371,12 @@ func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWhenDisabled(t *testing.T) 
 	plan := state
 	plan.Stealth = types.BoolValue(true)
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("expected launch change to produce an API patch")
 	}
 
 	body := marshalSDKParams(t, params)
@@ -388,9 +391,12 @@ func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWithoutLaunchChanges(t *tes
 	plan := state
 	plan.RebuildIdle = types.BoolValue(true)
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("local-only preference change produced an API patch")
 	}
 	assertEmptyUpdateSDKParams(t, params)
 }
@@ -490,12 +496,15 @@ func TestExpandUpdateParamsRejectsUnknownViewportDimensions(t *testing.T) {
 				t.Fatal("viewport object is unknown, want a known object with an unknown dimension")
 			}
 
-			params, diags := expandUpdateParams(context.Background(), plan, state)
+			params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
 			if !diags.HasError() {
 				t.Fatal("expected diagnostics for unknown viewport dimension")
 			}
 			if !hasDiagnosticPath(diags, test.path) {
 				t.Fatalf("expected diagnostic at %s, got %v", test.path, diags)
+			}
+			if hasPatch {
+				t.Fatal("invalid viewport produced an API patch")
 			}
 			assertEmptyUpdateSDKParams(t, params)
 		})
@@ -530,7 +539,7 @@ func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersForNonLaunchChanges(t *test
 	plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Unknown())
 	plan.RebuildIdle = types.BoolValue(true)
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -564,9 +573,12 @@ func TestExpandUpdateParamsOmitsUnchangedDurableConfig(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), model, model)
+	params, hasPatch, diags := expandUpdateParams(context.Background(), model, model)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("unchanged configuration produced an API patch")
 	}
 
 	body := marshalSDKParams(t, params)
@@ -609,7 +621,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 		RebuildIdle:       types.BoolValue(false),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -659,7 +671,7 @@ func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unsupported clear operations")
 	}
@@ -684,7 +696,7 @@ func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 		Name: types.StringValue("pool-a"),
 	}
 
-	_, diags := expandUpdateParams(context.Background(), plan, state)
+	_, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unknown size and optionals")
 	}
@@ -715,7 +727,7 @@ func TestExpandUpdateParamsRejectsInvalidChromePolicy(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for invalid chrome_policy")
 	}

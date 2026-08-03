@@ -89,7 +89,7 @@ func expandCreateParams(ctx context.Context, model browserPoolModel) (kernel.Bro
 	return params, diags
 }
 
-func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kernel.BrowserPoolUpdateParams, diag.Diagnostics) {
+func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kernel.BrowserPoolUpdateParams, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	// Collect every known-value problem before bailing so a plan with several
@@ -104,89 +104,108 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 	validateUpdateKnownValues(&diags, plan)
 	validateSupportedUpdateClears(&diags, plan, state)
 	if diags.HasError() {
-		return kernel.BrowserPoolUpdateParams{}, diags
+		return kernel.BrowserPoolUpdateParams{}, false, diags
 	}
 
 	var params kernel.BrowserPoolUpdateParams
+	hasPatch := false
 	if isKnownBool(plan.RebuildIdle) && plan.RebuildIdle.ValueBool() && browserLaunchConfigurationChanged(plan, state) {
 		// Pool updates change the template for future browsers. Rebuild browsers
 		// that are idle now only when the customer explicitly opts into the
 		// disruptive replacement behavior.
 		params.DiscardAllIdle = kernel.Bool(true)
+		hasPatch = true
 	}
 
 	if !plan.Name.Equal(state.Name) && isKnownString(plan.Name) {
 		params.Name = kernel.String(plan.Name.ValueString())
+		hasPatch = true
 	}
 	if !plan.Size.Equal(state.Size) {
 		params.Size = kernel.Int(plan.Size.ValueInt64())
+		hasPatch = true
 	}
 	if !plan.ProfileID.Equal(state.ProfileID) && isKnownString(plan.ProfileID) {
 		params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
+		hasPatch = true
 	}
 	if !plan.ProxyID.Equal(state.ProxyID) {
 		if plan.ProxyID.IsNull() {
 			params.ProxyID = kernel.String("")
+			hasPatch = true
 		} else if isKnownString(plan.ProxyID) {
 			params.ProxyID = kernel.String(plan.ProxyID.ValueString())
+			hasPatch = true
 		}
 	}
 	if !plan.ExtensionIDs.Equal(state.ExtensionIDs) {
 		if plan.ExtensionIDs.IsNull() {
 			params.Extensions = []shared.BrowserExtensionParam{}
+			hasPatch = true
 		} else {
 			ids, extensionDiags := extensionIDs(ctx, plan.ExtensionIDs, "updating")
 			diags.Append(extensionDiags...)
 			if diags.HasError() {
-				return kernel.BrowserPoolUpdateParams{}, diags
+				return kernel.BrowserPoolUpdateParams{}, false, diags
 			}
 			params.Extensions = extensionParams(ids)
+			hasPatch = true
 		}
 	}
 	if !plan.ChromePolicy.Equal(state.ChromePolicy) {
 		if plan.ChromePolicy.IsNull() {
 			params.ChromePolicy = map[string]any{}
+			hasPatch = true
 		} else if isKnownString(plan.ChromePolicy.StringValue) {
 			policy, policyDiags := decodeChromePolicyJSON(plan.ChromePolicy.ValueString())
 			diags.Append(policyDiags...)
 			if diags.HasError() {
-				return kernel.BrowserPoolUpdateParams{}, diags
+				return kernel.BrowserPoolUpdateParams{}, false, diags
 			}
 			params.ChromePolicy = policy
+			hasPatch = true
 		}
 	}
 	if browserViewportChanged(plan.Viewport, state.Viewport) && !plan.Viewport.IsNull() {
 		viewport, viewportDiags := expandViewport(ctx, plan.Viewport)
 		diags.Append(viewportDiags...)
 		if diags.HasError() {
-			return kernel.BrowserPoolUpdateParams{}, diags
+			return kernel.BrowserPoolUpdateParams{}, false, diags
 		}
 		params.Viewport = viewport
+		hasPatch = true
 	}
 	if !plan.Headless.Equal(state.Headless) && isKnownBool(plan.Headless) {
 		params.Headless = kernel.Bool(plan.Headless.ValueBool())
+		hasPatch = true
 	}
 	if !plan.KioskMode.Equal(state.KioskMode) && isKnownBool(plan.KioskMode) {
 		params.KioskMode = kernel.Bool(plan.KioskMode.ValueBool())
+		hasPatch = true
 	}
 	if !plan.Stealth.Equal(state.Stealth) && isKnownBool(plan.Stealth) {
 		params.Stealth = kernel.Bool(plan.Stealth.ValueBool())
+		hasPatch = true
 	}
 	if !plan.StartURL.Equal(state.StartURL) {
 		if plan.StartURL.IsNull() {
 			params.StartURL = kernel.String("")
+			hasPatch = true
 		} else if isKnownString(plan.StartURL) {
 			params.StartURL = kernel.String(plan.StartURL.ValueString())
+			hasPatch = true
 		}
 	}
 	if !plan.TimeoutSeconds.Equal(state.TimeoutSeconds) && isKnownInt64(plan.TimeoutSeconds) {
 		params.TimeoutSeconds = kernel.Int(plan.TimeoutSeconds.ValueInt64())
+		hasPatch = true
 	}
 	if !plan.FillRatePerMinute.Equal(state.FillRatePerMinute) && isKnownInt64(plan.FillRatePerMinute) {
 		params.FillRatePerMinute = kernel.Int(plan.FillRatePerMinute.ValueInt64())
+		hasPatch = true
 	}
 
-	return params, diags
+	return params, hasPatch, diags
 }
 
 func browserLaunchConfigurationChanged(plan, state browserPoolModel) bool {
