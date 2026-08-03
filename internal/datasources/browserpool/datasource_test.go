@@ -90,6 +90,9 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "headless", false, true)
 	assertAttributeMode(t, resp.Schema, "kiosk_mode", false, true)
 	assertAttributeMode(t, resp.Schema, "stealth", false, true)
+	assertAttributeMode(t, resp.Schema, "start_url", false, true)
+	assertAttributeMode(t, resp.Schema, "timeout_seconds", false, true)
+	assertAttributeMode(t, resp.Schema, "fill_rate_per_minute", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
