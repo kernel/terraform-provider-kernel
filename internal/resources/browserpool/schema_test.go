@@ -105,6 +105,36 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	}
 }
 
+func TestSchemaRefreshOnProfileUpdatePreservesStateDuringUnrelatedUpdate(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	planned := runBoolPlanModifiers(t, attr,
+		types.BoolValue(false), types.BoolUnknown(), types.BoolNull())
+
+	if !planned.Equal(types.BoolValue(false)) {
+		t.Fatalf("unset refresh_on_profile_update should keep the state value, got %v", planned)
+	}
+}
+
+func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan, config types.Bool) types.Bool {
+	t.Helper()
+
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.BoolRequest{
+		State:       tfsdk.State{Raw: nonNullRaw},
+		Plan:        tfsdk.Plan{Raw: nonNullRaw},
+		StateValue:  state,
+		PlanValue:   plan,
+		ConfigValue: config,
+	}
+
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		m.PlanModifyBool(context.Background(), req, resp)
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
 func TestSchemaProjectIDSemantics(t *testing.T) {
 	s := BrowserPoolSchema()
 
