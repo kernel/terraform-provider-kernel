@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -68,6 +71,49 @@ func TestDataSourceMetadataSchemaAndConfigure(t *testing.T) {
 	if len(invalid.Diagnostics) != 1 || invalid.Diagnostics[0].Summary() != "Unexpected Kernel Client Type" {
 		t.Fatalf("invalid configure diagnostics = %v", invalid.Diagnostics)
 	}
+}
+
+func TestDataSourceSchemaSemantics(t *testing.T) {
+	t.Parallel()
+
+	ds := NewDataSource()
+	var resp datasource.SchemaResponse
+	ds.Schema(context.Background(), datasource.SchemaRequest{}, &resp)
+
+	id, ok := resp.Schema.Attributes["id"].(dschema.StringAttribute)
+	if !ok || !id.Optional || !id.Computed || id.Required {
+		t.Fatalf("id must be an optional, computed string: %#v", resp.Schema.Attributes["id"])
+	}
+	name, ok := resp.Schema.Attributes["name"].(dschema.StringAttribute)
+	if !ok || !name.Optional || !name.Computed || name.Required {
+		t.Fatalf("name must be an optional, computed string: %#v", resp.Schema.Attributes["name"])
+	}
+	projectID, ok := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
+	if !ok || !projectID.Optional || projectID.Computed || projectID.Required {
+		t.Fatalf("project_id must be an optional string: %#v", resp.Schema.Attributes["project_id"])
+	}
+	size, ok := resp.Schema.Attributes["size"].(dschema.Int64Attribute)
+	if !ok || !size.Computed || size.Optional || size.Required {
+		t.Fatalf("size must be a computed integer: %#v", resp.Schema.Attributes["size"])
+	}
+
+	if !validateProjectID(projectID.Validators, "").HasError() {
+		t.Fatal("project_id accepted an empty string")
+	}
+	if diags := validateProjectID(projectID.Validators, "project-1"); diags.HasError() {
+		t.Fatalf("project_id rejected a non-empty string: %v", diags)
+	}
+}
+
+func validateProjectID(validators []validator.String, value string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for _, candidate := range validators {
+		req := validator.StringRequest{ConfigValue: types.StringValue(value)}
+		var resp validator.StringResponse
+		candidate.ValidateString(context.Background(), req, &resp)
+		diags.Append(resp.Diagnostics...)
+	}
+	return diags
 }
 
 func TestReadBrowserPoolByIDOrName(t *testing.T) {
