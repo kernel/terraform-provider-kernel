@@ -83,6 +83,9 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	if got.FillRatePerMinute.ValueInt64() != 20 {
 		t.Fatalf("fill_rate_per_minute = %d, want 20", got.FillRatePerMinute.ValueInt64())
 	}
+	if got.RebuildIdle.IsNull() || got.RebuildIdle.IsUnknown() || got.RebuildIdle.ValueBool() {
+		t.Fatalf("rebuild_idle_browsers_on_update = %v, want known false default", got.RebuildIdle)
+	}
 }
 
 func TestFlattenBrowserPoolUsesLegacySelectorsWhenResolvedFieldsAreOmitted(t *testing.T) {

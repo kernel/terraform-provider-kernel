@@ -25,6 +25,10 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 	if diags.HasError() {
 		return browserPoolModel{}, diags
 	}
+	rebuildIdle := base.RebuildIdle
+	if rebuildIdle.IsNull() || rebuildIdle.IsUnknown() {
+		rebuildIdle = types.BoolValue(false)
+	}
 
 	model := browserPoolModel{
 		ID:                types.StringValue(pool.ID),
@@ -41,7 +45,7 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 		StartURL:          flattenString("browser_pool_config.start_url", config.JSON.StartURL.Raw(), config.JSON.StartURL.Valid(), config.StartURL, &diags),
 		TimeoutSeconds:    flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
 		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
-		RebuildIdle:       base.RebuildIdle,
+		RebuildIdle:       rebuildIdle,
 	}
 
 	if responseFieldPresent(config.JSON.ChromePolicy.Raw()) {
