@@ -366,6 +366,65 @@ func TestExpandUpdateParamsRebuildsIdleBrowsersWhenOptedIn(t *testing.T) {
 	}
 }
 
+func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
+	state := browserPoolModel{
+		ProfileID:    types.StringValue("profile-1"),
+		ProxyID:      types.StringValue("proxy-1"),
+		ExtensionIDs: stringListForTest("extension-1"),
+		ChromePolicy: chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:     viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:     types.BoolValue(true),
+		KioskMode:    types.BoolValue(false),
+		Stealth:      types.BoolValue(false),
+		StartURL:     types.StringValue("https://example.com"),
+	}
+	tests := map[string]func(*browserPoolModel){
+		"profile_id": func(plan *browserPoolModel) {
+			plan.ProfileID = types.StringValue("profile-2")
+		},
+		"proxy_id": func(plan *browserPoolModel) {
+			plan.ProxyID = types.StringValue("proxy-2")
+		},
+		"extension_ids": func(plan *browserPoolModel) {
+			plan.ExtensionIDs = stringListForTest("extension-2")
+		},
+		"chrome_policy": func(plan *browserPoolModel) {
+			plan.ChromePolicy = chromePolicyValueForTest(`{"HomepageLocation":"https://kernel.sh"}`)
+		},
+		"viewport.width": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1440), types.Int64Value(800), types.Int64Value(60))
+		},
+		"viewport.height": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(900), types.Int64Value(60))
+		},
+		"viewport.refresh_rate": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(30))
+		},
+		"headless": func(plan *browserPoolModel) {
+			plan.Headless = types.BoolValue(false)
+		},
+		"kiosk_mode": func(plan *browserPoolModel) {
+			plan.KioskMode = types.BoolValue(true)
+		},
+		"stealth": func(plan *browserPoolModel) {
+			plan.Stealth = types.BoolValue(true)
+		},
+		"start_url": func(plan *browserPoolModel) {
+			plan.StartURL = types.StringValue("https://kernel.sh")
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan := state
+			mutate(&plan)
+			if !browserLaunchConfigurationChanged(plan, state) {
+				t.Fatal("launch configuration change was not detected")
+			}
+		})
+	}
+}
+
 func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersForNonLaunchChanges(t *testing.T) {
 	state := browserPoolModel{
 		Name:              types.StringValue("pool-a"),

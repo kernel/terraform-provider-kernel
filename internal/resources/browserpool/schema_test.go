@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -122,6 +123,26 @@ func TestSchemaIDKeepsStateDuringUpdate(t *testing.T) {
 	}
 	if !planned.Equal(types.StringValue("pool-1")) {
 		t.Fatalf("planned id = %v, want pool-1 from state", planned)
+	}
+}
+
+func TestSchemaRebuildIdleBrowsersOnUpdateDefaultsFalse(t *testing.T) {
+	t.Parallel()
+
+	attr := boolAttribute(t, BrowserPoolSchema(), "rebuild_idle_browsers_on_update")
+	if attr.Default == nil {
+		t.Fatal("rebuild_idle_browsers_on_update has no default")
+	}
+
+	var resp defaults.BoolResponse
+	attr.Default.DefaultBool(context.Background(), defaults.BoolRequest{
+		Path: path.Root("rebuild_idle_browsers_on_update"),
+	}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("default diagnostics: %v", resp.Diagnostics)
+	}
+	if !resp.PlanValue.Equal(types.BoolValue(false)) {
+		t.Fatalf("rebuild_idle_browsers_on_update default = %v, want false", resp.PlanValue)
 	}
 }
 

@@ -210,7 +210,9 @@ func testAccCheckAcquiredBrowserStealth(t *testing.T, resourceName string, want 
 			return fmt.Errorf("acquire browser from updated Kernel pool %s returned no browser", poolID)
 		}
 		defer func() {
-			if err := client.BrowserPools.Release(ctx, poolID, kernel.BrowserPoolReleaseParams{
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer releaseCancel()
+			if err := client.BrowserPools.Release(releaseCtx, poolID, kernel.BrowserPoolReleaseParams{
 				SessionID: browser.SessionID,
 				Reuse:     kernel.Bool(false),
 			}, requestOpts...); err != nil {
