@@ -84,6 +84,8 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	assertAttributeMode(t, resp.Schema, "name", true, true)
 	assertAttributeMode(t, resp.Schema, "project_id", true, false)
 	assertAttributeMode(t, resp.Schema, "size", false, true)
+	assertAttributeMode(t, resp.Schema, "profile_id", false, true)
+	assertAttributeMode(t, resp.Schema, "extension_ids", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
