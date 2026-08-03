@@ -99,6 +99,7 @@ func TestDataSourceSchemaSemantics(t *testing.T) {
 	for _, name := range []string{"width", "height", "refresh_rate"} {
 		assertAttributeMapMode(t, viewport.Attributes, name, false, true)
 	}
+	assertAttributeMode(t, resp.Schema, "chrome_policy", false, true)
 
 	projectID := resp.Schema.Attributes["project_id"].(dschema.StringAttribute)
 	if !validateProjectID(projectID.Validators, "").HasError() {
