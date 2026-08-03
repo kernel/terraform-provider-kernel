@@ -8,6 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -90,6 +92,9 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				CustomType:          chromePolicyType{},
 				MarkdownDescription: "JSON object of Chrome enterprise policy overrides. Stored as written; key order and whitespace are ignored when detecting changes.",
+				PlanModifiers: []planmodifier.String{
+					preserveEquivalentChromePolicy{},
+				},
 				Validators: []validator.String{
 					chromePolicyJSONValidator{},
 				},
@@ -119,6 +124,9 @@ func BrowserPoolSchema() rschema.Schema {
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Optional display refresh rate in Hz.",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.Int64{
 							int64validator.AtLeast(minViewportRefreshRate),
 						},
@@ -129,16 +137,25 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Launch browsers using a headless image.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"kiosk_mode": rschema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Launch browsers in kiosk mode.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"stealth": rschema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Launch browsers in stealth mode.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"start_url": rschema.StringAttribute{
 				Optional:            true,
@@ -152,6 +169,9 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Default idle timeout in seconds for acquired browsers.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(minTimeoutSeconds, maxTimeoutSeconds),
 				},
@@ -160,6 +180,9 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Percentage of the pool to fill per minute, from 0 through 50.",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(minFillRatePerMinute, maxFillRatePerMinute),
 				},

@@ -298,6 +298,83 @@ func TestSchemaValidatesChromePolicyJSON(t *testing.T) {
 	assertStringAccepts(t, attr, "chrome_policy", `{"HomepageLocation":"https://example.com"}`)
 }
 
+func TestSchemaChromePolicyPreservesStateForEquivalentJSON(t *testing.T) {
+	attr := stringAttribute(t, BrowserPoolSchema(), "chrome_policy")
+	state := types.StringValue(`{"HomepageLocation":"https://example.com","RestoreOnStartup":4}`)
+	config := types.StringValue(`{ "RestoreOnStartup": 4, "HomepageLocation": "https://example.com" }`)
+
+	planned, requiresReplace := runProjectIDPlanModifiers(t, attr, state, config, config)
+	if requiresReplace {
+		t.Fatal("equivalent chrome_policy JSON must not replace the pool")
+	}
+	if !planned.Equal(state) {
+		t.Fatalf("equivalent chrome_policy JSON planned as %q, want prior state %q", planned.ValueString(), state.ValueString())
+	}
+
+	changed := types.StringValue(`{"HomepageLocation":"https://kernel.sh","RestoreOnStartup":4}`)
+	planned, _ = runProjectIDPlanModifiers(t, attr, state, changed, changed)
+	if !planned.Equal(changed) {
+		t.Fatalf("changed chrome_policy JSON planned as %q, want configured value %q", planned.ValueString(), changed.ValueString())
+	}
+}
+
+func TestSchemaPreservesComputedDefaultsDuringUnrelatedUpdates(t *testing.T) {
+	s := BrowserPoolSchema()
+
+	for _, name := range []string{"headless", "kiosk_mode", "stealth"} {
+		attr := boolAttribute(t, s, name)
+		planned := runBoolPlanModifiers(t, attr, types.BoolValue(false), types.BoolUnknown(), types.BoolNull())
+		if !planned.Equal(types.BoolValue(false)) {
+			t.Fatalf("%s planned as %v, want prior false state", name, planned)
+		}
+	}
+
+	for _, name := range []string{"timeout_seconds", "fill_rate_per_minute"} {
+		attr := int64Attribute(t, s, name)
+		planned := runInt64PlanModifiers(t, attr, types.Int64Value(42), types.Int64Unknown(), types.Int64Null())
+		if !planned.Equal(types.Int64Value(42)) {
+			t.Fatalf("%s planned as %v, want prior state", name, planned)
+		}
+	}
+
+	viewport := singleNestedAttribute(t, s, "viewport")
+	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
+	planned := runInt64PlanModifiers(t, refreshRate, types.Int64Value(60), types.Int64Unknown(), types.Int64Null())
+	if !planned.Equal(types.Int64Value(60)) {
+		t.Fatalf("viewport.refresh_rate planned as %v, want prior state", planned)
+	}
+}
+
+func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan, config types.Bool) types.Bool {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.BoolRequest{
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		m.PlanModifyBool(context.Background(), req, resp)
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
+func runInt64PlanModifiers(t *testing.T, attr rschema.Int64Attribute, state, plan, config types.Int64) types.Int64 {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.Int64Request{
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.Int64Response{PlanValue: req.PlanValue}
+		m.PlanModifyInt64(context.Background(), req, resp)
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
 func TestSchemaValidatesNameAPIContract(t *testing.T) {
 	attr := stringAttribute(t, BrowserPoolSchema(), "name")
 
