@@ -73,6 +73,9 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "When true, idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` to be set.",
+				PlanModifiers: []planmodifier.Bool{
+					preserveRefreshOnProfileUpdate{},
+				},
 				Validators: []validator.Bool{
 					refreshOnProfileUpdateValidator{},
 				},
