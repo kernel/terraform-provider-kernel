@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -17,25 +18,26 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
-func TestSchemaContainsOnlyDurableAttributes(t *testing.T) {
+func TestSchemaContainsOnlySupportedAttributes(t *testing.T) {
 	s := BrowserPoolSchema()
 
 	want := map[string]struct{}{
-		"id":                   {},
-		"name":                 {},
-		"project_id":           {},
-		"size":                 {},
-		"profile_id":           {},
-		"proxy_id":             {},
-		"extension_ids":        {},
-		"chrome_policy":        {},
-		"viewport":             {},
-		"headless":             {},
-		"kiosk_mode":           {},
-		"stealth":              {},
-		"start_url":            {},
-		"timeout_seconds":      {},
-		"fill_rate_per_minute": {},
+		"id":                              {},
+		"name":                            {},
+		"project_id":                      {},
+		"size":                            {},
+		"profile_id":                      {},
+		"proxy_id":                        {},
+		"extension_ids":                   {},
+		"chrome_policy":                   {},
+		"viewport":                        {},
+		"headless":                        {},
+		"kiosk_mode":                      {},
+		"stealth":                         {},
+		"start_url":                       {},
+		"timeout_seconds":                 {},
+		"fill_rate_per_minute":            {},
+		"rebuild_idle_browsers_on_update": {},
 	}
 
 	for name := range want {
@@ -93,6 +95,9 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	assertInt64Attribute(t, s, "fill_rate_per_minute", func(attr rschema.Int64Attribute) bool {
 		return attr.Optional && attr.Computed && !attr.Required
 	})
+	assertBoolAttribute(t, s, "rebuild_idle_browsers_on_update", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required && attr.Default != nil
+	})
 
 	viewport := singleNestedAttribute(t, s, "viewport")
 	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
@@ -118,6 +123,26 @@ func TestSchemaIDKeepsStateDuringUpdate(t *testing.T) {
 	}
 	if !planned.Equal(types.StringValue("pool-1")) {
 		t.Fatalf("planned id = %v, want pool-1 from state", planned)
+	}
+}
+
+func TestSchemaRebuildIdleBrowsersOnUpdateDefaultsFalse(t *testing.T) {
+	t.Parallel()
+
+	attr := boolAttribute(t, BrowserPoolSchema(), "rebuild_idle_browsers_on_update")
+	if attr.Default == nil {
+		t.Fatal("rebuild_idle_browsers_on_update has no default")
+	}
+
+	var resp defaults.BoolResponse
+	attr.Default.DefaultBool(context.Background(), defaults.BoolRequest{
+		Path: path.Root("rebuild_idle_browsers_on_update"),
+	}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("default diagnostics: %v", resp.Diagnostics)
+	}
+	if !resp.PlanValue.Equal(types.BoolValue(false)) {
+		t.Fatalf("rebuild_idle_browsers_on_update default = %v, want false", resp.PlanValue)
 	}
 }
 

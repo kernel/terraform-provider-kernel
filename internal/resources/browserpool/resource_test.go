@@ -12,7 +12,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 )
@@ -93,6 +95,210 @@ func TestResourceMetadataAndSchema(t *testing.T) {
 	if _, ok := schema.Schema.Attributes["size"]; !ok {
 		t.Fatal("browser pool schema missing size attribute")
 	}
+}
+
+func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		apply       func(*browserPoolModel)
+		applyConfig func(*browserPoolModel)
+		nullPlan    bool
+		nullState   bool
+		wantWarn    bool
+	}{
+		{
+			name: "known launch change while enabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "launch change while disabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+			},
+		},
+		{
+			name: "non-launch change while enabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringValue("pool-b")
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "omitted computed launch values on metadata update",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringValue("pool-b")
+				plan.Headless = types.BoolUnknown()
+				plan.KioskMode = types.BoolUnknown()
+				plan.Stealth = types.BoolUnknown()
+				plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Unknown())
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			applyConfig: func(config *browserPoolModel) {
+				config.Headless = types.BoolNull()
+				config.KioskMode = types.BoolNull()
+				config.Stealth = types.BoolNull()
+				config.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null())
+			},
+		},
+		{
+			name: "local preference change only",
+			apply: func(plan *browserPoolModel) {
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "unknown launch value",
+			apply: func(plan *browserPoolModel) {
+				plan.ProfileID = types.StringUnknown()
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "configured unknown computed launch value",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolUnknown()
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "unrelated unknown with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringUnknown()
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "replacement with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.ProjectID = types.StringValue("proj_b")
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "unsupported clear blocks launch update",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringNull()
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "unknown required viewport dimension",
+			apply: func(plan *browserPoolModel) {
+				plan.Viewport = viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60))
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "unknown rebuild preference with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolUnknown()
+			},
+			wantWarn: true,
+		},
+		{
+			name: "create",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			nullState: true,
+		},
+		{
+			name:     "destroy",
+			nullPlan: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			state := updateModelForTest()
+			state.ID = types.StringValue("pool-1")
+			state.ProjectID = types.StringValue("proj_a")
+			state.Name = types.StringValue("pool-a")
+			state.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+			plan := state
+			if test.apply != nil {
+				test.apply(&plan)
+			}
+			config := plan
+			if test.applyConfig != nil {
+				test.applyConfig(&config)
+			}
+
+			req, resp := runModifyPlanForTest(t, plan, state, config, test.nullPlan, test.nullState)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+			gotWarn := resp.Diagnostics.WarningsCount() == 1
+			if gotWarn != test.wantWarn {
+				t.Fatalf("warning present = %t, want %t: %v", gotWarn, test.wantWarn, resp.Diagnostics)
+			}
+			if test.wantWarn {
+				if !hasDiagnosticPath(resp.Diagnostics, path.Root("rebuild_idle_browsers_on_update")) {
+					t.Fatalf("expected warning at rebuild_idle_browsers_on_update, got %v", resp.Diagnostics)
+				}
+				if !strings.Contains(resp.Diagnostics.Warnings()[0].Summary(), "Idle Browser Rebuild") {
+					t.Fatalf("unexpected warning: %v", resp.Diagnostics.Warnings()[0])
+				}
+				if !strings.Contains(resp.Diagnostics.Warnings()[0].Detail(), "may discard") {
+					t.Fatalf("warning does not disclose the possible discard: %v", resp.Diagnostics.Warnings()[0])
+				}
+			}
+			if !resp.Plan.Raw.Equal(req.Plan.Raw) {
+				t.Fatal("ModifyPlan changed the planned state")
+			}
+			if len(resp.RequiresReplace) != 0 {
+				t.Fatalf("ModifyPlan unexpectedly required replacement: %v", resp.RequiresReplace)
+			}
+		})
+	}
+}
+
+func runModifyPlanForTest(t *testing.T, plan, state, config browserPoolModel, nullPlan, nullState bool) (tfresource.ModifyPlanRequest, tfresource.ModifyPlanResponse) {
+	t.Helper()
+
+	ctx := context.Background()
+	schema := BrowserPoolSchema()
+	req := tfresource.ModifyPlanRequest{
+		Config: tfsdk.Config{Schema: schema},
+		Plan:   tfsdk.Plan{Schema: schema},
+		State:  tfsdk.State{Schema: schema},
+	}
+	configValue := tfsdk.Plan{Schema: schema}
+	if diags := configValue.Set(ctx, config); diags.HasError() {
+		t.Fatalf("set config: %v", diags)
+	}
+	req.Config.Raw = configValue.Raw
+	if nullPlan {
+		req.Plan.Raw = tftypes.NewValue(schema.Type().TerraformType(ctx), nil)
+	} else if diags := req.Plan.Set(ctx, plan); diags.HasError() {
+		t.Fatalf("set plan: %v", diags)
+	}
+	if nullState {
+		req.State.RemoveResource(ctx)
+	} else if diags := req.State.Set(ctx, state); diags.HasError() {
+		t.Fatalf("set state: %v", diags)
+	}
+
+	resp := tfresource.ModifyPlanResponse{Plan: req.Plan}
+	(&browserPoolResource{}).ModifyPlan(ctx, req, &resp)
+	return req, resp
 }
 
 func TestResourceImportState(t *testing.T) {
@@ -495,6 +701,28 @@ func TestReadBrowserPoolRejectsEmptyStateID(t *testing.T) {
 	}
 }
 
+func TestUpdateBrowserPoolPersistsLocalPreferenceWithoutAPICall(t *testing.T) {
+	t.Parallel()
+
+	state := updateModelForTest()
+	state.ID = types.StringValue("pool-1")
+	state.ProjectID = types.StringValue("proj_a")
+	plan := state
+	plan.RebuildIdle = types.BoolValue(true)
+
+	r := newResourceWithClient(fakeBrowserPoolClient{})
+	nextState, diags := r.update(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !nextState.RebuildIdle.ValueBool() {
+		t.Fatal("rebuild_idle_browsers_on_update = false, want local preference persisted")
+	}
+	if !nextState.ID.Equal(state.ID) || !nextState.ProjectID.Equal(state.ProjectID) {
+		t.Fatal("local preference update changed browser pool identity")
+	}
+}
+
 func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -512,6 +740,7 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		ID:                types.StringValue("pool-1"),
@@ -529,6 +758,7 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
 	var calls []string
@@ -585,8 +815,9 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	}
 	body := marshalSDKParams(t, gotParams)
 	want := map[string]any{
-		"size":      float64(2),
-		"start_url": "https://new.example",
+		"discard_all_idle": true,
+		"size":             float64(2),
+		"start_url":        "https://new.example",
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)
@@ -599,6 +830,9 @@ func TestUpdateBrowserPoolPatchesStateIDAndReadsAfterUpdate(t *testing.T) {
 	}
 	if nextState.StartURL.ValueString() != "https://new.example" {
 		t.Fatalf("start_url = %q, want https://new.example", nextState.StartURL.ValueString())
+	}
+	if !nextState.RebuildIdle.ValueBool() {
+		t.Fatal("rebuild_idle_browsers_on_update = false, want true preserved from configuration")
 	}
 }
 
@@ -615,6 +849,7 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		ID:                types.StringValue("pool-1"),
@@ -627,6 +862,7 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 		Stealth:           types.BoolValue(false),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
 	var gotParams kernel.BrowserPoolUpdateParams
@@ -666,8 +902,9 @@ func TestUpdateBrowserPoolUsesPlanAsReadBaseToAvoidEmptyValueDrift(t *testing.T)
 
 	body := marshalSDKParams(t, gotParams)
 	want := map[string]any{
-		"extensions":    []any{},
-		"chrome_policy": map[string]any{},
+		"discard_all_idle": true,
+		"extensions":       []any{},
+		"chrome_policy":    map[string]any{},
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("update params mismatch\ngot:  %#v\nwant: %#v", body, want)

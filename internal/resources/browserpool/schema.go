@@ -5,6 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -150,6 +151,12 @@ func BrowserPoolSchema() rschema.Schema {
 				Validators: []validator.Int64{
 					int64validator.AtLeast(minFillRatePerMinute),
 				},
+			},
+			"rebuild_idle_browsers_on_update": rschema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "When true, changes to profile_id, proxy_id, extension_ids, chrome_policy, viewport, headless, kiosk_mode, stealth, or start_url discard browsers that are idle when the update runs so replacements use the new configuration. Browsers that are warming or currently leased are not rebuilt. Kernel does not store this provider-local setting, so imported browser pools default to false unless configured otherwise.",
 			},
 		},
 	}

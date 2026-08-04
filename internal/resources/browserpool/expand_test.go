@@ -305,7 +305,7 @@ func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
@@ -331,6 +331,234 @@ func TestExpandUpdateParamsMapsChangedDurableConfigToSDKPatch(t *testing.T) {
 	}
 }
 
+func TestExpandUpdateParamsRebuildsIdleBrowsersWhenOptedIn(t *testing.T) {
+	state := browserPoolModel{
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
+	plan := state
+	plan.Stealth = types.BoolValue(true)
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"discard_all_idle": true,
+		"stealth":          true,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWhenDisabled(t *testing.T) {
+	state := updateModelForTest()
+	plan := state
+	plan.Stealth = types.BoolValue(true)
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("expected launch change to produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"stealth": true}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWithoutLaunchChanges(t *testing.T) {
+	state := updateModelForTest()
+	plan := state
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("local-only preference change produced an API patch")
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
+func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
+	state := browserPoolModel{
+		ProfileID:    types.StringValue("profile-1"),
+		ProxyID:      types.StringValue("proxy-1"),
+		ExtensionIDs: stringListForTest("extension-1"),
+		ChromePolicy: chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:     viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:     types.BoolValue(true),
+		KioskMode:    types.BoolValue(false),
+		Stealth:      types.BoolValue(false),
+		StartURL:     types.StringValue("https://example.com"),
+	}
+	tests := map[string]func(*browserPoolModel){
+		"profile_id": func(plan *browserPoolModel) {
+			plan.ProfileID = types.StringValue("profile-2")
+		},
+		"proxy_id": func(plan *browserPoolModel) {
+			plan.ProxyID = types.StringValue("proxy-2")
+		},
+		"extension_ids": func(plan *browserPoolModel) {
+			plan.ExtensionIDs = stringListForTest("extension-2")
+		},
+		"chrome_policy": func(plan *browserPoolModel) {
+			plan.ChromePolicy = chromePolicyValueForTest(`{"HomepageLocation":"https://kernel.sh"}`)
+		},
+		"viewport.width": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1440), types.Int64Value(800), types.Int64Value(60))
+		},
+		"viewport.height": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(900), types.Int64Value(60))
+		},
+		"viewport.refresh_rate": func(plan *browserPoolModel) {
+			plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(30))
+		},
+		"headless": func(plan *browserPoolModel) {
+			plan.Headless = types.BoolValue(false)
+		},
+		"kiosk_mode": func(plan *browserPoolModel) {
+			plan.KioskMode = types.BoolValue(true)
+		},
+		"stealth": func(plan *browserPoolModel) {
+			plan.Stealth = types.BoolValue(true)
+		},
+		"start_url": func(plan *browserPoolModel) {
+			plan.StartURL = types.StringValue("https://kernel.sh")
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan := state
+			mutate(&plan)
+			if !browserLaunchConfigurationChanged(plan, state) {
+				t.Fatal("launch configuration change was not detected")
+			}
+			if !browserLaunchConfigurationMayChange(plan, state, plan) {
+				t.Fatal("launch configuration change was not detected during planning")
+			}
+		})
+	}
+}
+
+func TestBrowserViewportChangedFromNullToConfigured(t *testing.T) {
+	plan := viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+	state := types.ObjectNull(viewportAttrTypes())
+
+	if !browserViewportChanged(plan, state) {
+		t.Fatal("null to configured viewport change was not detected")
+	}
+}
+
+func TestExpandUpdateParamsRejectsUnknownViewportDimensions(t *testing.T) {
+	state := updateModelForTest()
+	state.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+	tests := map[string]struct {
+		viewport types.Object
+		path     path.Path
+	}{
+		"width": {
+			viewport: viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60)),
+			path:     path.Root("viewport").AtName("width"),
+		},
+		"height": {
+			viewport: viewportObjectForTest(types.Int64Value(1280), types.Int64Unknown(), types.Int64Value(60)),
+			path:     path.Root("viewport").AtName("height"),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan := state
+			plan.Viewport = test.viewport
+			plan.RebuildIdle = types.BoolValue(true)
+
+			if plan.Viewport.IsUnknown() {
+				t.Fatal("viewport object is unknown, want a known object with an unknown dimension")
+			}
+
+			params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics for unknown viewport dimension")
+			}
+			if !hasDiagnosticPath(diags, test.path) {
+				t.Fatalf("expected diagnostic at %s, got %v", test.path, diags)
+			}
+			if hasPatch {
+				t.Fatal("invalid viewport produced an API patch")
+			}
+			assertEmptyUpdateSDKParams(t, params)
+		})
+	}
+}
+
+func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersForNonLaunchChanges(t *testing.T) {
+	state := browserPoolModel{
+		Name:              types.StringValue("pool-a"),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
+	plan := state
+	plan.Name = types.StringValue("pool-b")
+	plan.Size = types.Int64Value(2)
+	plan.FillRatePerMinute = types.Int64Value(20)
+	plan.TimeoutSeconds = types.Int64Value(120)
+	plan.Headless = types.BoolUnknown()
+	plan.KioskMode = types.BoolUnknown()
+	plan.Stealth = types.BoolUnknown()
+	plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Unknown())
+	plan.RebuildIdle = types.BoolValue(true)
+
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"name":                 "pool-b",
+		"size":                 float64(2),
+		"fill_rate_per_minute": float64(20),
+		"timeout_seconds":      float64(120),
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
 func TestExpandUpdateParamsOmitsUnchangedDurableConfig(t *testing.T) {
 	model := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
@@ -348,9 +576,12 @@ func TestExpandUpdateParamsOmitsUnchangedDurableConfig(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), model, model)
+	params, hasPatch, diags := expandUpdateParams(context.Background(), model, model)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("unchanged configuration produced an API patch")
 	}
 
 	body := marshalSDKParams(t, params)
@@ -374,6 +605,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 		StartURL:          types.StringNull(),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(true),
 	}
 	state := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
@@ -389,19 +621,21 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 		StartURL:          types.StringValue("https://example.com"),
 		TimeoutSeconds:    types.Int64Value(90),
 		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
 
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
-		"proxy_id":      "",
-		"extensions":    []any{},
-		"chrome_policy": map[string]any{},
-		"start_url":     "",
+		"discard_all_idle": true,
+		"proxy_id":         "",
+		"extensions":       []any{},
+		"chrome_policy":    map[string]any{},
+		"start_url":        "",
 	}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
@@ -440,7 +674,7 @@ func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unsupported clear operations")
 	}
@@ -456,22 +690,61 @@ func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 	// Mirrors the create path: an unknown size must not short-circuit the
 	// optional-unknown checks, so every problem surfaces in one apply cycle.
 	plan := browserPoolModel{
-		Size: types.Int64Unknown(),
-		Name: types.StringUnknown(),
+		Size:        types.Int64Unknown(),
+		Name:        types.StringUnknown(),
+		RebuildIdle: types.BoolUnknown(),
 	}
 	state := browserPoolModel{
 		Size: types.Int64Value(1),
 		Name: types.StringValue("pool-a"),
 	}
 
-	_, diags := expandUpdateParams(context.Background(), plan, state)
+	_, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unknown size and optionals")
 	}
-	for _, want := range []path.Path{path.Root("size"), path.Root("name")} {
+	for _, want := range []path.Path{path.Root("size"), path.Root("name"), path.Root("rebuild_idle_browsers_on_update")} {
 		if !hasDiagnosticPath(diags, want) {
 			t.Fatalf("expected diagnostic at %s, got %v", want, diags)
 		}
+	}
+}
+
+func TestExpandUpdateParamsRejectsUnknownLaunchComparisonValuesBeforeDiscard(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*browserPoolModel)
+		path  path.Path
+	}{
+		{"profile_id", func(m *browserPoolModel) { m.ProfileID = types.StringUnknown() }, path.Root("profile_id")},
+		{"proxy_id", func(m *browserPoolModel) { m.ProxyID = types.StringUnknown() }, path.Root("proxy_id")},
+		{"extension_ids", func(m *browserPoolModel) { m.ExtensionIDs = types.ListUnknown(types.StringType) }, path.Root("extension_ids")},
+		{"chrome_policy", func(m *browserPoolModel) {
+			m.ChromePolicy = chromePolicyValue{StringValue: basetypes.NewStringUnknown()}
+		}, path.Root("chrome_policy")},
+		{"viewport", func(m *browserPoolModel) { m.Viewport = types.ObjectUnknown(viewportAttrTypes()) }, path.Root("viewport")},
+		{"start_url", func(m *browserPoolModel) { m.StartURL = types.StringUnknown() }, path.Root("start_url")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := updateModelForTest()
+			plan := state
+			plan.RebuildIdle = types.BoolValue(true)
+			test.apply(&plan)
+
+			params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics for unknown launch comparison value")
+			}
+			if !hasDiagnosticPath(diags, test.path) {
+				t.Fatalf("expected diagnostic at %s, got %v", test.path, diags)
+			}
+			if hasPatch {
+				t.Fatal("unknown launch comparison value produced an API patch")
+			}
+			assertEmptyUpdateSDKParams(t, params)
+		})
 	}
 }
 
@@ -495,7 +768,7 @@ func TestExpandUpdateParamsRejectsInvalidChromePolicy(t *testing.T) {
 		FillRatePerMinute: types.Int64Value(10),
 	}
 
-	params, diags := expandUpdateParams(context.Background(), plan, state)
+	params, _, diags := expandUpdateParams(context.Background(), plan, state)
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for invalid chrome_policy")
 	}
@@ -550,6 +823,25 @@ func viewportObjectForTest(width, height, refreshRate types.Int64) types.Object 
 			"refresh_rate": refreshRate,
 		},
 	)
+}
+
+func updateModelForTest() browserPoolModel {
+	return browserPoolModel{
+		Name:              types.StringNull(),
+		Size:              types.Int64Value(1),
+		ProfileID:         types.StringNull(),
+		ProxyID:           types.StringNull(),
+		ExtensionIDs:      types.ListNull(types.StringType),
+		ChromePolicy:      chromePolicyNull(),
+		Viewport:          types.ObjectNull(viewportAttrTypes()),
+		Headless:          types.BoolValue(true),
+		KioskMode:         types.BoolValue(false),
+		Stealth:           types.BoolValue(false),
+		StartURL:          types.StringNull(),
+		TimeoutSeconds:    types.Int64Value(90),
+		FillRatePerMinute: types.Int64Value(10),
+		RebuildIdle:       types.BoolValue(false),
+	}
 }
 
 func marshalSDKParams(t *testing.T, params any) map[string]any {

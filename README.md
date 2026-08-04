@@ -156,8 +156,10 @@ export KERNEL_PROJECT_ID="..."
 ```
 
 The tests create uniquely named durable resources and register independent
-cleanup. Browser-pool deletion remains `force=false`. The tests do not acquire,
-release, or recover browsers.
+cleanup. Browser-pool deletion remains `force=false`. One update regression
+opts into rebuilding idle browsers, acquires a replacement, and releases it
+with `reuse=false`; the remaining tests do not acquire, release, or recover
+browsers.
 
 Use the commands in the [selected-surface acceptance matrix](docs/acceptance.md).
 It is the source of truth for current live coverage and the pre-tag release run.
