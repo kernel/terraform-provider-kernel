@@ -101,11 +101,12 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		apply     func(*browserPoolModel)
-		nullPlan  bool
-		nullState bool
-		wantWarn  bool
+		name        string
+		apply       func(*browserPoolModel)
+		applyConfig func(*browserPoolModel)
+		nullPlan    bool
+		nullState   bool
+		wantWarn    bool
 	}{
 		{
 			name: "known launch change while enabled",
@@ -129,6 +130,23 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 			},
 		},
 		{
+			name: "omitted computed launch values on metadata update",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringValue("pool-b")
+				plan.Headless = types.BoolUnknown()
+				plan.KioskMode = types.BoolUnknown()
+				plan.Stealth = types.BoolUnknown()
+				plan.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Unknown())
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			applyConfig: func(config *browserPoolModel) {
+				config.Headless = types.BoolNull()
+				config.KioskMode = types.BoolNull()
+				config.Stealth = types.BoolNull()
+				config.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null())
+			},
+		},
+		{
 			name: "local preference change only",
 			apply: func(plan *browserPoolModel) {
 				plan.RebuildIdle = types.BoolValue(true)
@@ -138,6 +156,14 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 			name: "unknown launch value",
 			apply: func(plan *browserPoolModel) {
 				plan.ProfileID = types.StringUnknown()
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "configured unknown computed launch value",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolUnknown()
 				plan.RebuildIdle = types.BoolValue(true)
 			},
 			wantWarn: true,
@@ -202,8 +228,12 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 			if test.apply != nil {
 				test.apply(&plan)
 			}
+			config := plan
+			if test.applyConfig != nil {
+				test.applyConfig(&config)
+			}
 
-			req, resp := runModifyPlanForTest(t, plan, state, test.nullPlan, test.nullState)
+			req, resp := runModifyPlanForTest(t, plan, state, config, test.nullPlan, test.nullState)
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
 			}
@@ -232,15 +262,21 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 	}
 }
 
-func runModifyPlanForTest(t *testing.T, plan, state browserPoolModel, nullPlan, nullState bool) (tfresource.ModifyPlanRequest, tfresource.ModifyPlanResponse) {
+func runModifyPlanForTest(t *testing.T, plan, state, config browserPoolModel, nullPlan, nullState bool) (tfresource.ModifyPlanRequest, tfresource.ModifyPlanResponse) {
 	t.Helper()
 
 	ctx := context.Background()
 	schema := BrowserPoolSchema()
 	req := tfresource.ModifyPlanRequest{
-		Plan:  tfsdk.Plan{Schema: schema},
-		State: tfsdk.State{Schema: schema},
+		Config: tfsdk.Config{Schema: schema},
+		Plan:   tfsdk.Plan{Schema: schema},
+		State:  tfsdk.State{Schema: schema},
 	}
+	configValue := tfsdk.Plan{Schema: schema}
+	if diags := configValue.Set(ctx, config); diags.HasError() {
+		t.Fatalf("set config: %v", diags)
+	}
+	req.Config.Raw = configValue.Raw
 	if nullPlan {
 		req.Plan.Raw = tftypes.NewValue(schema.Type().TerraformType(ctx), nil)
 	} else if diags := req.Plan.Set(ctx, plan); diags.HasError() {

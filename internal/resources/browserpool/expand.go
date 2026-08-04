@@ -224,25 +224,46 @@ func browserLaunchConfigurationChanged(plan, state browserPoolModel) bool {
 		!plan.StartURL.Equal(state.StartURL)
 }
 
-func browserLaunchConfigurationMayChange(plan, state browserPoolModel) bool {
-	// Planning must disclose a possible rebuild before approval, so unknown
-	// launch values count as possible changes here but not in the patch builder.
-	return valueMayChange(plan.ProfileID, state.ProfileID) ||
-		valueMayChange(plan.ProxyID, state.ProxyID) ||
-		valueMayChange(plan.ExtensionIDs, state.ExtensionIDs) ||
-		valueMayChange(plan.ChromePolicy, state.ChromePolicy) ||
-		browserViewportMayChange(plan.Viewport, state.Viewport) ||
+func browserLaunchConfigurationMayChange(plan, state, config browserPoolModel) bool {
+	return knownValueChanged(plan.ProfileID, state.ProfileID) ||
+		knownValueChanged(plan.ProxyID, state.ProxyID) ||
+		knownValueChanged(plan.ExtensionIDs, state.ExtensionIDs) ||
+		knownValueChanged(plan.ChromePolicy, state.ChromePolicy) ||
+		knownBrowserViewportChanged(plan.Viewport, state.Viewport) ||
 		knownBoolChanged(plan.Headless, state.Headless) ||
-		plan.Headless.IsUnknown() ||
 		knownBoolChanged(plan.KioskMode, state.KioskMode) ||
-		plan.KioskMode.IsUnknown() ||
 		knownBoolChanged(plan.Stealth, state.Stealth) ||
-		plan.Stealth.IsUnknown() ||
-		valueMayChange(plan.StartURL, state.StartURL)
+		knownValueChanged(plan.StartURL, state.StartURL) ||
+		browserLaunchConfigurationUnknown(config)
 }
 
-func valueMayChange(plan, state attr.Value) bool {
-	return plan.IsUnknown() || !plan.Equal(state)
+func knownValueChanged(plan, state attr.Value) bool {
+	return !plan.IsUnknown() && !plan.Equal(state)
+}
+
+func browserLaunchConfigurationUnknown(config browserPoolModel) bool {
+	if config.ProfileID.IsUnknown() ||
+		config.ProxyID.IsUnknown() ||
+		config.ExtensionIDs.IsUnknown() ||
+		config.ChromePolicy.IsUnknown() ||
+		config.Headless.IsUnknown() ||
+		config.KioskMode.IsUnknown() ||
+		config.Stealth.IsUnknown() ||
+		config.StartURL.IsUnknown() {
+		return true
+	}
+	if config.Viewport.IsNull() {
+		return false
+	}
+	if config.Viewport.IsUnknown() {
+		return true
+	}
+	for _, value := range config.Viewport.Attributes() {
+		if value.IsUnknown() {
+			return true
+		}
+	}
+	return false
 }
 
 func knownBoolChanged(plan, state types.Bool) bool {
@@ -271,9 +292,9 @@ func browserViewportChanged(plan, state types.Object) bool {
 	return !planRefreshRate.IsUnknown() && !planRefreshRate.Equal(stateAttrs["refresh_rate"])
 }
 
-func browserViewportMayChange(plan, state types.Object) bool {
+func knownBrowserViewportChanged(plan, state types.Object) bool {
 	if plan.IsUnknown() {
-		return true
+		return false
 	}
 	if plan.IsNull() || state.IsNull() || state.IsUnknown() {
 		return !plan.Equal(state)
@@ -282,7 +303,7 @@ func browserViewportMayChange(plan, state types.Object) bool {
 	planAttrs := plan.Attributes()
 	stateAttrs := state.Attributes()
 	for _, name := range []string{"width", "height", "refresh_rate"} {
-		if planAttrs[name].IsUnknown() || !planAttrs[name].Equal(stateAttrs[name]) {
+		if !planAttrs[name].IsUnknown() && !planAttrs[name].Equal(stateAttrs[name]) {
 			return true
 		}
 	}

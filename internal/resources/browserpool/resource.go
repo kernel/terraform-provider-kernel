@@ -58,7 +58,9 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	var state browserPoolModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() || !idleBrowserRebuildWarningRequired(plan, state) {
+	var config browserPoolModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() || !idleBrowserRebuildWarningRequired(plan, state, config) {
 		return
 	}
 
@@ -69,8 +71,11 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	)
 }
 
-func idleBrowserRebuildWarningRequired(plan, state browserPoolModel) bool {
-	if plan.RebuildIdle.IsNull() || (isKnownBool(plan.RebuildIdle) && !plan.RebuildIdle.ValueBool()) {
+func idleBrowserRebuildWarningRequired(plan, state, config browserPoolModel) bool {
+	rebuildPossible := isKnownBool(plan.RebuildIdle) && plan.RebuildIdle.ValueBool()
+	rebuildPossible = rebuildPossible || config.RebuildIdle.IsUnknown() ||
+		(isKnownBool(config.RebuildIdle) && config.RebuildIdle.ValueBool())
+	if !rebuildPossible {
 		return false
 	}
 	if !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID) {
@@ -83,7 +88,7 @@ func idleBrowserRebuildWarningRequired(plan, state browserPoolModel) bool {
 		return false
 	}
 
-	return browserLaunchConfigurationMayChange(plan, state)
+	return browserLaunchConfigurationMayChange(plan, state, config)
 }
 
 func (r *browserPoolResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
