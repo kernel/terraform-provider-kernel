@@ -12,7 +12,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	tfresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 )
@@ -93,6 +95,166 @@ func TestResourceMetadataAndSchema(t *testing.T) {
 	if _, ok := schema.Schema.Attributes["size"]; !ok {
 		t.Fatal("browser pool schema missing size attribute")
 	}
+}
+
+func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		apply     func(*browserPoolModel)
+		nullPlan  bool
+		nullState bool
+		wantWarn  bool
+	}{
+		{
+			name: "known launch change while enabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "launch change while disabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+			},
+		},
+		{
+			name: "non-launch change while enabled",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringValue("pool-b")
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "local preference change only",
+			apply: func(plan *browserPoolModel) {
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "unknown launch value",
+			apply: func(plan *browserPoolModel) {
+				plan.ProfileID = types.StringUnknown()
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "unrelated unknown with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringUnknown()
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "replacement with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.ProjectID = types.StringValue("proj_b")
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
+			name: "unknown required viewport dimension",
+			apply: func(plan *browserPoolModel) {
+				plan.Viewport = viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60))
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			wantWarn: true,
+		},
+		{
+			name: "unknown rebuild preference with known launch change",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolUnknown()
+			},
+			wantWarn: true,
+		},
+		{
+			name: "create",
+			apply: func(plan *browserPoolModel) {
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+			nullState: true,
+		},
+		{
+			name:     "destroy",
+			nullPlan: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			state := updateModelForTest()
+			state.ID = types.StringValue("pool-1")
+			state.ProjectID = types.StringValue("proj_a")
+			state.Name = types.StringValue("pool-a")
+			state.Viewport = viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60))
+			plan := state
+			if test.apply != nil {
+				test.apply(&plan)
+			}
+
+			req, resp := runModifyPlanForTest(t, plan, state, test.nullPlan, test.nullState)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+			gotWarn := resp.Diagnostics.WarningsCount() == 1
+			if gotWarn != test.wantWarn {
+				t.Fatalf("warning present = %t, want %t: %v", gotWarn, test.wantWarn, resp.Diagnostics)
+			}
+			if test.wantWarn {
+				if !hasDiagnosticPath(resp.Diagnostics, path.Root("rebuild_idle_browsers_on_update")) {
+					t.Fatalf("expected warning at rebuild_idle_browsers_on_update, got %v", resp.Diagnostics)
+				}
+				if !strings.Contains(resp.Diagnostics.Warnings()[0].Summary(), "Idle Browser Rebuild") {
+					t.Fatalf("unexpected warning: %v", resp.Diagnostics.Warnings()[0])
+				}
+				if !strings.Contains(resp.Diagnostics.Warnings()[0].Detail(), "may discard") {
+					t.Fatalf("warning does not disclose the possible discard: %v", resp.Diagnostics.Warnings()[0])
+				}
+			}
+			if !resp.Plan.Raw.Equal(req.Plan.Raw) {
+				t.Fatal("ModifyPlan changed the planned state")
+			}
+			if len(resp.RequiresReplace) != 0 {
+				t.Fatalf("ModifyPlan unexpectedly required replacement: %v", resp.RequiresReplace)
+			}
+		})
+	}
+}
+
+func runModifyPlanForTest(t *testing.T, plan, state browserPoolModel, nullPlan, nullState bool) (tfresource.ModifyPlanRequest, tfresource.ModifyPlanResponse) {
+	t.Helper()
+
+	ctx := context.Background()
+	schema := BrowserPoolSchema()
+	req := tfresource.ModifyPlanRequest{
+		Plan:  tfsdk.Plan{Schema: schema},
+		State: tfsdk.State{Schema: schema},
+	}
+	if nullPlan {
+		req.Plan.Raw = tftypes.NewValue(schema.Type().TerraformType(ctx), nil)
+	} else if diags := req.Plan.Set(ctx, plan); diags.HasError() {
+		t.Fatalf("set plan: %v", diags)
+	}
+	if nullState {
+		req.State.RemoveResource(ctx)
+	} else if diags := req.State.Set(ctx, state); diags.HasError() {
+		t.Fatalf("set state: %v", diags)
+	}
+
+	resp := tfresource.ModifyPlanResponse{Plan: req.Plan}
+	(&browserPoolResource{}).ModifyPlan(ctx, req, &resp)
+	return req, resp
 }
 
 func TestResourceImportState(t *testing.T) {

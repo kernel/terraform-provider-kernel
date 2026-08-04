@@ -707,6 +707,44 @@ func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 	}
 }
 
+func TestExpandUpdateParamsRejectsUnknownLaunchComparisonValuesBeforeDiscard(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*browserPoolModel)
+		path  path.Path
+	}{
+		{"profile_id", func(m *browserPoolModel) { m.ProfileID = types.StringUnknown() }, path.Root("profile_id")},
+		{"proxy_id", func(m *browserPoolModel) { m.ProxyID = types.StringUnknown() }, path.Root("proxy_id")},
+		{"extension_ids", func(m *browserPoolModel) { m.ExtensionIDs = types.ListUnknown(types.StringType) }, path.Root("extension_ids")},
+		{"chrome_policy", func(m *browserPoolModel) {
+			m.ChromePolicy = chromePolicyValue{StringValue: basetypes.NewStringUnknown()}
+		}, path.Root("chrome_policy")},
+		{"viewport", func(m *browserPoolModel) { m.Viewport = types.ObjectUnknown(viewportAttrTypes()) }, path.Root("viewport")},
+		{"start_url", func(m *browserPoolModel) { m.StartURL = types.StringUnknown() }, path.Root("start_url")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := updateModelForTest()
+			plan := state
+			plan.RebuildIdle = types.BoolValue(true)
+			test.apply(&plan)
+
+			params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+			if !diags.HasError() {
+				t.Fatal("expected diagnostics for unknown launch comparison value")
+			}
+			if !hasDiagnosticPath(diags, test.path) {
+				t.Fatalf("expected diagnostic at %s, got %v", test.path, diags)
+			}
+			if hasPatch {
+				t.Fatal("unknown launch comparison value produced an API patch")
+			}
+			assertEmptyUpdateSDKParams(t, params)
+		})
+	}
+}
+
 func TestExpandUpdateParamsRejectsInvalidChromePolicy(t *testing.T) {
 	plan := browserPoolModel{
 		Size:              types.Int64Value(1),

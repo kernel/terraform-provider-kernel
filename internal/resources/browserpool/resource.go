@@ -18,6 +18,7 @@ var (
 	_ resource.Resource                = (*browserPoolResource)(nil)
 	_ resource.ResourceWithConfigure   = (*browserPoolResource)(nil)
 	_ resource.ResourceWithImportState = (*browserPoolResource)(nil)
+	_ resource.ResourceWithModifyPlan  = (*browserPoolResource)(nil)
 )
 
 type browserPoolClient interface {
@@ -46,6 +47,43 @@ func (r *browserPoolResource) Metadata(ctx context.Context, req resource.Metadat
 
 func (r *browserPoolResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = BrowserPoolSchema()
+}
+
+func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan browserPoolModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var state browserPoolModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() || !idleBrowserRebuildWarningRequired(plan, state) {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeWarning(
+		path.Root("rebuild_idle_browsers_on_update"),
+		"Idle Browser Rebuild May Be Applied",
+		"Applying this plan may discard browsers that are currently idle so Kernel can replace them with the planned browser launch configuration. This occurs only if rebuild_idle_browsers_on_update resolves to true and a launch setting changes. Browsers that are warming or currently leased are not affected. Ready capacity may be reduced while the pool refills.",
+	)
+}
+
+func idleBrowserRebuildWarningRequired(plan, state browserPoolModel) bool {
+	if plan.RebuildIdle.IsNull() || (isKnownBool(plan.RebuildIdle) && !plan.RebuildIdle.ValueBool()) {
+		return false
+	}
+	if !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID) {
+		return false
+	}
+
+	var diags diag.Diagnostics
+	validateSupportedUpdateClears(&diags, plan, state)
+	if diags.HasError() {
+		return false
+	}
+
+	return browserLaunchConfigurationMayChange(plan, state)
 }
 
 func (r *browserPoolResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
