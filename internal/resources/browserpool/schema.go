@@ -64,10 +64,7 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"profile_id": rschema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional profile ID to load for browsers created by this pool. Removing an existing profile replaces the pool because the API cannot clear it in place.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplaceIf(requiresReplaceOnStringClear, "Removing the configured value replaces the browser pool.", "Removing the configured value replaces the browser pool."),
-				},
+				MarkdownDescription: "Optional profile ID to load for browsers created by this pool.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -131,7 +128,7 @@ func BrowserPoolSchema() rschema.Schema {
 						Computed:            true,
 						MarkdownDescription: "Optional display refresh rate in Hz.",
 						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
+							int64planmodifier.UseNonNullStateForUnknown(),
 						},
 						Validators: []validator.Int64{
 							int64validator.AtLeast(minViewportRefreshRate),
@@ -185,12 +182,12 @@ func BrowserPoolSchema() rschema.Schema {
 			"fill_rate_per_minute": rschema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Percentage of the pool to fill per minute, from 0 through 50.",
+				MarkdownDescription: "Percentage of the pool to fill per minute. The maximum is determined by the Kernel organization.",
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
 				Validators: []validator.Int64{
-					int64validator.Between(minFillRatePerMinute, maxFillRatePerMinute),
+					int64validator.AtLeast(minFillRatePerMinute),
 				},
 			},
 			"rebuild_idle_browsers_on_update": rschema.BoolAttribute{

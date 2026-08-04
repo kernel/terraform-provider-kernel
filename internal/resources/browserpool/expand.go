@@ -125,9 +125,14 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 		params.Size = kernel.Int(plan.Size.ValueInt64())
 		hasPatch = true
 	}
-	if !plan.ProfileID.Equal(state.ProfileID) && isKnownString(plan.ProfileID) {
-		params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
-		hasPatch = true
+	if !plan.ProfileID.Equal(state.ProfileID) {
+		if plan.ProfileID.IsNull() {
+			params.Profile.ID = kernel.String("")
+			hasPatch = true
+		} else if isKnownString(plan.ProfileID) {
+			params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
+			hasPatch = true
+		}
 	}
 	if !plan.ProxyID.Equal(state.ProxyID) {
 		if plan.ProxyID.IsNull() {
@@ -337,13 +342,6 @@ func validateSupportedUpdateClears(diags *diag.Diagnostics, plan, state browserP
 			diags,
 			path.Root("name"),
 			"The Kernel browser pool API does not currently support clearing a browser pool name. Set a new name or keep the existing name.",
-		)
-	}
-	if clearsString(plan.ProfileID, state.ProfileID) {
-		addUnsupportedClearDiagnostic(
-			diags,
-			path.Root("profile_id"),
-			"The Kernel browser pool API does not currently expose a safe profile clear payload. Set a new profile_id or keep the existing profile_id.",
 		)
 	}
 	if plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown() {

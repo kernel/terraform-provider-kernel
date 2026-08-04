@@ -188,7 +188,7 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
 	s := BrowserPoolSchema()
 
-	for _, name := range []string{"name", "profile_id"} {
+	for _, name := range []string{"name"} {
 		attr := stringAttribute(t, s, name)
 		_, requiresReplace := runStringPlanModifiers(t, attr,
 			types.StringValue("configured"), types.StringNull(), types.StringNull())
@@ -201,6 +201,13 @@ func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
 		if requiresReplace {
 			t.Fatalf("changing %s to another value must remain an in-place update", name)
 		}
+	}
+
+	profile := stringAttribute(t, s, "profile_id")
+	_, requiresReplace := runStringPlanModifiers(t, profile,
+		types.StringValue("profile-1"), types.StringNull(), types.StringNull())
+	if requiresReplace {
+		t.Fatal("clearing profile_id must remain an in-place update")
 	}
 
 	viewport := singleNestedAttribute(t, s, "viewport")
@@ -273,8 +280,7 @@ func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
 	assertInt64Rejects(t, int64Attribute(t, s, "timeout_seconds"), "timeout_seconds", 259201)
 	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", -1)
 	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 0)
-	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 50)
-	assertInt64Rejects(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 51)
+	assertInt64Accepts(t, int64Attribute(t, s, "fill_rate_per_minute"), "fill_rate_per_minute", 100)
 
 	viewport := singleNestedAttribute(t, s, "viewport")
 	assertInt64Rejects(t, nestedInt64Attribute(t, viewport, "width"), "viewport.width", 0)
@@ -303,7 +309,7 @@ func TestSchemaChromePolicyPreservesStateForEquivalentJSON(t *testing.T) {
 	state := types.StringValue(`{"HomepageLocation":"https://example.com","RestoreOnStartup":4}`)
 	config := types.StringValue(`{ "RestoreOnStartup": 4, "HomepageLocation": "https://example.com" }`)
 
-	planned, requiresReplace := runProjectIDPlanModifiers(t, attr, state, config, config)
+	planned, requiresReplace := runStringPlanModifiers(t, attr, state, config, config)
 	if requiresReplace {
 		t.Fatal("equivalent chrome_policy JSON must not replace the pool")
 	}
@@ -312,7 +318,7 @@ func TestSchemaChromePolicyPreservesStateForEquivalentJSON(t *testing.T) {
 	}
 
 	changed := types.StringValue(`{"HomepageLocation":"https://kernel.sh","RestoreOnStartup":4}`)
-	planned, _ = runProjectIDPlanModifiers(t, attr, state, changed, changed)
+	planned, _ = runStringPlanModifiers(t, attr, state, changed, changed)
 	if !planned.Equal(changed) {
 		t.Fatalf("changed chrome_policy JSON planned as %q, want configured value %q", planned.ValueString(), changed.ValueString())
 	}
@@ -342,6 +348,15 @@ func TestSchemaPreservesComputedDefaultsDuringUnrelatedUpdates(t *testing.T) {
 	planned := runInt64PlanModifiers(t, refreshRate, types.Int64Value(60), types.Int64Unknown(), types.Int64Null())
 	if !planned.Equal(types.Int64Value(60)) {
 		t.Fatalf("viewport.refresh_rate planned as %v, want prior state", planned)
+	}
+}
+
+func TestSchemaLeavesNewViewportRefreshRateUnknown(t *testing.T) {
+	viewport := singleNestedAttribute(t, BrowserPoolSchema(), "viewport")
+	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
+	planned := runInt64PlanModifiers(t, refreshRate, types.Int64Null(), types.Int64Unknown(), types.Int64Null())
+	if !planned.IsUnknown() {
+		t.Fatalf("new viewport refresh_rate planned as %v, want unknown for the API default", planned)
 	}
 }
 
