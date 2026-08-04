@@ -101,6 +101,26 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	}
 }
 
+func TestSchemaIDKeepsStateDuringUpdate(t *testing.T) {
+	t.Parallel()
+
+	s := BrowserPoolSchema()
+
+	attr, ok := s.Attributes["id"].(rschema.StringAttribute)
+	if !ok {
+		t.Fatal("id is not a string attribute")
+	}
+
+	planned, requiresReplace := runStringPlanModifiers(t, attr,
+		types.StringValue("pool-1"), types.StringUnknown(), types.StringNull())
+	if requiresReplace {
+		t.Fatal("an unknown id during update must not replace the pool")
+	}
+	if !planned.Equal(types.StringValue("pool-1")) {
+		t.Fatalf("planned id = %v, want pool-1 from state", planned)
+	}
+}
+
 func TestSchemaProjectIDSemantics(t *testing.T) {
 	s := BrowserPoolSchema()
 
@@ -112,7 +132,7 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 		t.Fatal("project_id should be optional and computed so the resolved project is stored in state")
 	}
 
-	planned, requiresReplace := runProjectIDPlanModifiers(t, attr,
+	planned, requiresReplace := runStringPlanModifiers(t, attr,
 		types.StringValue("proj_a"), types.StringValue("proj_b"), types.StringValue("proj_b"))
 	if !requiresReplace {
 		t.Fatal("changing project_id must replace the pool; pools cannot move between projects")
@@ -121,7 +141,7 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 		t.Fatalf("planned project_id = %v, want proj_b", planned)
 	}
 
-	planned, requiresReplace = runProjectIDPlanModifiers(t, attr,
+	planned, requiresReplace = runStringPlanModifiers(t, attr,
 		types.StringValue("proj_a"), types.StringUnknown(), types.StringNull())
 	if requiresReplace {
 		t.Fatal("unset project_id must not replace a pool with an inherited project")
@@ -130,7 +150,7 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 		t.Fatalf("unset project_id should keep the state value, got %v", planned)
 	}
 
-	planned, requiresReplace = runProjectIDPlanModifiers(t, attr,
+	planned, requiresReplace = runStringPlanModifiers(t, attr,
 		types.StringNull(), types.StringUnknown(), types.StringNull())
 	if requiresReplace {
 		t.Fatal("unscoped pools must not plan replacement on refresh")
@@ -140,7 +160,7 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 	}
 }
 
-func runProjectIDPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, plan, config types.String) (types.String, bool) {
+func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, plan, config types.String) (types.String, bool) {
 	t.Helper()
 
 	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
@@ -156,6 +176,9 @@ func runProjectIDPlanModifiers(t *testing.T, attr rschema.StringAttribute, state
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.StringResponse{PlanValue: req.PlanValue}
 		m.PlanModifyString(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
 		req.PlanValue = resp.PlanValue
 		requiresReplace = requiresReplace || resp.RequiresReplace
 	}
