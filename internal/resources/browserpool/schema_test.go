@@ -188,23 +188,21 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
 	s := BrowserPoolSchema()
 
-	for _, name := range []string{"name"} {
-		attr := stringAttribute(t, s, name)
-		_, requiresReplace := runStringPlanModifiers(t, attr,
-			types.StringValue("configured"), types.StringNull(), types.StringNull())
-		if !requiresReplace {
-			t.Fatalf("clearing %s must replace the pool", name)
-		}
+	name := stringAttribute(t, s, "name")
+	_, requiresReplace := runStringPlanModifiers(t, name,
+		types.StringValue("configured"), types.StringNull(), types.StringNull())
+	if !requiresReplace {
+		t.Fatal("clearing name must replace the pool")
+	}
 
-		_, requiresReplace = runStringPlanModifiers(t, attr,
-			types.StringValue("old"), types.StringValue("new"), types.StringValue("new"))
-		if requiresReplace {
-			t.Fatalf("changing %s to another value must remain an in-place update", name)
-		}
+	_, requiresReplace = runStringPlanModifiers(t, name,
+		types.StringValue("old"), types.StringValue("new"), types.StringValue("new"))
+	if requiresReplace {
+		t.Fatal("changing name to another value must remain an in-place update")
 	}
 
 	profile := stringAttribute(t, s, "profile_id")
-	_, requiresReplace := runStringPlanModifiers(t, profile,
+	_, requiresReplace = runStringPlanModifiers(t, profile,
 		types.StringValue("profile-1"), types.StringNull(), types.StringNull())
 	if requiresReplace {
 		t.Fatal("clearing profile_id must remain an in-place update")
@@ -219,7 +217,8 @@ func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
 			"width": types.Int64Value(1280), "height": types.Int64Value(800), "refresh_rate": types.Int64Value(60),
 		},
 	)
-	if !runObjectPlanModifiers(t, viewport, viewportValue, types.ObjectNull(viewportValue.AttributeTypes(context.Background()))) {
+	viewportNull := types.ObjectNull(viewportValue.AttributeTypes(context.Background()))
+	if !runObjectPlanModifiers(t, viewport, viewportValue, viewportNull, viewportNull) {
 		t.Fatal("clearing viewport must replace the pool")
 	}
 }
@@ -249,21 +248,26 @@ func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, p
 	return req.PlanValue, requiresReplace
 }
 
-func runObjectPlanModifiers(t *testing.T, attr rschema.SingleNestedAttribute, state, plan types.Object) bool {
+func runObjectPlanModifiers(t *testing.T, attr rschema.SingleNestedAttribute, state, plan, config types.Object) bool {
 	t.Helper()
 
 	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
 	req := planmodifier.ObjectRequest{
-		State:      tfsdk.State{Raw: nonNullRaw},
-		Plan:       tfsdk.Plan{Raw: nonNullRaw},
-		StateValue: state,
-		PlanValue:  plan,
+		State:       tfsdk.State{Raw: nonNullRaw},
+		Plan:        tfsdk.Plan{Raw: nonNullRaw},
+		StateValue:  state,
+		PlanValue:   plan,
+		ConfigValue: config,
 	}
 
 	requiresReplace := false
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.ObjectResponse{PlanValue: req.PlanValue}
 		m.PlanModifyObject(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
 		requiresReplace = requiresReplace || resp.RequiresReplace
 	}
 	return requiresReplace
@@ -401,6 +405,9 @@ func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan,
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
 		m.PlanModifyBool(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
 		req.PlanValue = resp.PlanValue
 	}
 	return req.PlanValue
@@ -416,6 +423,9 @@ func runInt64PlanModifiers(t *testing.T, attr rschema.Int64Attribute, state, pla
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.Int64Response{PlanValue: req.PlanValue}
 		m.PlanModifyInt64(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
 		req.PlanValue = resp.PlanValue
 	}
 	return req.PlanValue
@@ -436,6 +446,9 @@ func runListPlanModifiersWithStateRaw(t *testing.T, attr rschema.ListAttribute, 
 	for _, m := range attr.PlanModifiers {
 		resp := &planmodifier.ListResponse{PlanValue: req.PlanValue}
 		m.PlanModifyList(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
 		req.PlanValue = resp.PlanValue
 	}
 	return req.PlanValue

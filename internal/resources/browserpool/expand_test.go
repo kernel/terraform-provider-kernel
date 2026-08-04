@@ -643,6 +643,27 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	}
 }
 
+func TestExpandUpdateParamsClearsOnlyProfile(t *testing.T) {
+	state := updateModelForTest()
+	state.ProfileID = types.StringValue("profile-1")
+	plan := state
+	plan.ProfileID = types.StringNull()
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("clearing profile_id must produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": ""}}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
 func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
 	plan := browserPoolModel{
 		Name:              types.StringNull(),

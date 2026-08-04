@@ -64,7 +64,7 @@ func BrowserPoolSchema() rschema.Schema {
 			},
 			"profile_id": rschema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional profile ID to load for browsers created by this pool.",
+				MarkdownDescription: "Optional profile ID to load for browsers created by this pool. Removing an existing profile ID clears the profile in place.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -80,7 +80,7 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "Ordered extension IDs to load into browsers created by this pool.",
+				MarkdownDescription: "Ordered extension IDs to load into browsers created by this pool. For an existing pool, omission preserves the current extensions; set an empty list to clear them.",
 				PlanModifiers: []planmodifier.List{
 					defaultEmptyExtensionIDsOnCreate{},
 					listplanmodifier.UseStateForUnknown(),

@@ -384,6 +384,8 @@ func TestResourceImportState(t *testing.T) {
 			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &id)...)
 			var projectID types.String
 			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("project_id"), &projectID)...)
+			var extensionIDs types.List
+			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("extension_ids"), &extensionIDs)...)
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("read imported state: %v", resp.Diagnostics)
 			}
@@ -393,6 +395,7 @@ func TestResourceImportState(t *testing.T) {
 			if !projectID.Equal(test.wantProjectID) {
 				t.Fatalf("imported project_id = %v, want %v", projectID, test.wantProjectID)
 			}
+			assertStringList(t, extensionIDs, []string{})
 		})
 	}
 }
