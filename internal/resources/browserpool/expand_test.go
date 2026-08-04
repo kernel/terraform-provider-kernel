@@ -456,6 +456,9 @@ func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {
 			if !browserLaunchConfigurationChanged(plan, state) {
 				t.Fatal("launch configuration change was not detected")
 			}
+			if !browserLaunchConfigurationMayChange(plan, state, plan) {
+				t.Fatal("launch configuration change was not detected during planning")
+			}
 		})
 	}
 }

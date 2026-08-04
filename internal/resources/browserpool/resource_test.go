@@ -186,6 +186,14 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 			},
 		},
 		{
+			name: "unsupported clear blocks launch update",
+			apply: func(plan *browserPoolModel) {
+				plan.Name = types.StringNull()
+				plan.Stealth = types.BoolValue(true)
+				plan.RebuildIdle = types.BoolValue(true)
+			},
+		},
+		{
 			name: "unknown required viewport dimension",
 			apply: func(plan *browserPoolModel) {
 				plan.Viewport = viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60))
