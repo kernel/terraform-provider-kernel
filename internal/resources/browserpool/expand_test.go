@@ -16,20 +16,20 @@ import (
 
 func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 	model := browserPoolModel{
-		Name:              types.StringValue("pool-a"),
-		Size:              types.Int64Value(5),
-		ProfileID:         types.StringValue("profile-1"),
-		RefreshOnProfile:  types.BoolValue(false),
-		ProxyID:           types.StringValue("proxy-1"),
-		ExtensionIDs:      stringListForTest("ext-b", "ext-a"),
-		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
-		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(true),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringValue("https://start.example"),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(20),
+		Name:                   types.StringValue("pool-a"),
+		Size:                   types.Int64Value(5),
+		ProfileID:              types.StringValue("profile-1"),
+		RefreshOnProfileUpdate: types.BoolValue(false),
+		ProxyID:                types.StringValue("proxy-1"),
+		ExtensionIDs:           stringListForTest("ext-b", "ext-a"),
+		ChromePolicy:           chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:               viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:               types.BoolValue(true),
+		KioskMode:              types.BoolValue(true),
+		Stealth:                types.BoolValue(false),
+		StartURL:               types.StringValue("https://start.example"),
+		TimeoutSeconds:         types.Int64Value(90),
+		FillRatePerMinute:      types.Int64Value(20),
 	}
 
 	params, diags := expandCreateParams(context.Background(), model)
@@ -62,13 +62,13 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 
 func TestExpandCreateParamsOmitsUnknownServerDefaults(t *testing.T) {
 	model := browserPoolModel{
-		Size:              types.Int64Value(1),
-		RefreshOnProfile:  types.BoolUnknown(),
-		Headless:          types.BoolUnknown(),
-		KioskMode:         types.BoolUnknown(),
-		Stealth:           types.BoolUnknown(),
-		TimeoutSeconds:    types.Int64Unknown(),
-		FillRatePerMinute: types.Int64Unknown(),
+		Size:                   types.Int64Value(1),
+		RefreshOnProfileUpdate: types.BoolUnknown(),
+		Headless:               types.BoolUnknown(),
+		KioskMode:              types.BoolUnknown(),
+		Stealth:                types.BoolUnknown(),
+		TimeoutSeconds:         types.Int64Unknown(),
+		FillRatePerMinute:      types.Int64Unknown(),
 	}
 
 	params, diags := expandCreateParams(context.Background(), model)
@@ -474,6 +474,30 @@ func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileChanges(t *testing
 	}
 }
 
+func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileIsRemoved(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolValue(false))
+	plan.ProfileID = types.StringNull()
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile removal did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"profile":                   map[string]any{"id": ""},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
 func TestExpandUpdateParamsLetsAPIChooseRefreshDefaultWhenProfileChanges(t *testing.T) {
 	plan := refreshOnProfileUpdateModel(types.BoolUnknown())
 	plan.ProfileID = types.StringValue("profile-2")
@@ -497,7 +521,7 @@ func TestExpandUpdateParamsLetsAPIChooseRefreshDefaultWhenProfileChanges(t *test
 
 func refreshOnProfileUpdateModel(value types.Bool) browserPoolModel {
 	model := updateModelForTest()
-	model.RefreshOnProfile = value
+	model.RefreshOnProfileUpdate = value
 	return model
 }
 

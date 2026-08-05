@@ -152,20 +152,56 @@ func TestSchemaRebuildIdleBrowsersOnUpdateDefaultsFalse(t *testing.T) {
 
 func TestSchemaRefreshOnProfileUpdatePreservesStateDuringUnrelatedUpdate(t *testing.T) {
 	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
-	tests := map[string]tftypes.Value{
-		"with profile":    tftypes.NewValue(tftypes.String, "profile-1"),
-		"without profile": tftypes.NewValue(tftypes.String, nil),
+	tests := map[string]struct {
+		state     types.Bool
+		profileID tftypes.Value
+	}{
+		"with profile": {
+			state:     types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+		"without profile": {
+			state:     types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+		"null value from existing state": {
+			state:     types.BoolNull(),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
 	}
 
-	for name, profileID := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
-				types.BoolValue(false), types.BoolUnknown(), types.BoolNull(), profileID, profileID)
+				test.state, types.BoolUnknown(), types.BoolNull(), test.profileID, test.profileID)
 
-			if !planned.Equal(types.BoolValue(false)) {
+			if !planned.Equal(test.state) {
 				t.Fatalf("unset refresh_on_profile_update should keep the state value, got %v", planned)
 			}
 		})
+	}
+}
+
+func TestSchemaRefreshOnProfileUpdateDoesNotPreserveStateDuringCreate(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	nullResource := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, nil)
+	req := planmodifier.BoolRequest{
+		State:       tfsdk.State{Raw: nullResource},
+		StateValue:  types.BoolNull(),
+		PlanValue:   types.BoolUnknown(),
+		ConfigValue: types.BoolNull(),
+	}
+
+	for _, modifier := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		modifier.PlanModifyBool(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	if !req.PlanValue.IsUnknown() {
+		t.Fatalf("refresh_on_profile_update planned as %v during create, want unknown", req.PlanValue)
 	}
 }
 

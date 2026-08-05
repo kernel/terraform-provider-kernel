@@ -75,7 +75,7 @@ func TestFlattenBrowserPoolMapsDurableState(t *testing.T) {
 	if got.Stealth.ValueBool() {
 		t.Fatal("stealth = true, want false")
 	}
-	if !got.RefreshOnProfile.ValueBool() {
+	if !got.RefreshOnProfileUpdate.ValueBool() {
 		t.Fatal("refresh_on_profile_update = false, want true")
 	}
 	if got.StartURL.ValueString() != "https://start.example" {
@@ -182,8 +182,8 @@ func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	if !got.Stealth.IsNull() {
 		t.Fatalf("stealth = %#v, want null", got.Stealth)
 	}
-	if !got.RefreshOnProfile.IsNull() {
-		t.Fatalf("refresh_on_profile_update = %#v, want null", got.RefreshOnProfile)
+	if !got.RefreshOnProfileUpdate.IsNull() {
+		t.Fatalf("refresh_on_profile_update = %#v, want null", got.RefreshOnProfileUpdate)
 	}
 	assertStringNull(t, "start_url", got.StartURL)
 	if !got.TimeoutSeconds.IsNull() {
