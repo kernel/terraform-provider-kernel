@@ -152,6 +152,7 @@ Durable fields include:
 - `name`
 - `size`
 - `profile_id`
+- `refresh_on_profile_update`
 - `proxy_id`
 - ordered `extension_ids`
 - `chrome_policy`

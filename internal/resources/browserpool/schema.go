@@ -72,7 +72,7 @@ func BrowserPoolSchema() rschema.Schema {
 			"refresh_on_profile_update": rschema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "When true, idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` to be set.",
+				MarkdownDescription: "Controls whether idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` when true. When omitted, Kernel chooses its profile-dependent default when a profile is attached, changed, or removed; the API value is stored in state and preserved during unrelated updates. Explicit true or false values are sent unchanged.",
 				PlanModifiers: []planmodifier.Bool{
 					preserveRefreshOnProfileUpdate{},
 				},
