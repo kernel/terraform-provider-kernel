@@ -594,7 +594,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	plan := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
 		Size:              types.Int64Value(1),
-		ProfileID:         types.StringValue("profile-1"),
+		ProfileID:         types.StringNull(),
 		ProxyID:           types.StringNull(),
 		ExtensionIDs:      types.ListNull(types.StringType),
 		ChromePolicy:      chromePolicyNull(),
@@ -632,6 +632,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
 		"discard_all_idle": true,
+		"profile":          map[string]any{"id": ""},
 		"proxy_id":         "",
 		"extensions":       []any{},
 		"chrome_policy":    map[string]any{},
@@ -642,48 +643,25 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	}
 }
 
-func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
-	plan := browserPoolModel{
-		Name:              types.StringNull(),
-		Size:              types.Int64Value(1),
-		ProfileID:         types.StringNull(),
-		ProxyID:           types.StringNull(),
-		ExtensionIDs:      types.ListNull(types.StringType),
-		ChromePolicy:      chromePolicyNull(),
-		Viewport:          types.ObjectNull(viewportAttrTypes()),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(false),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringNull(),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(10),
+func TestExpandUpdateParamsClearsOnlyProfile(t *testing.T) {
+	state := updateModelForTest()
+	state.ProfileID = types.StringValue("profile-1")
+	plan := state
+	plan.ProfileID = types.StringNull()
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	state := browserPoolModel{
-		Name:              types.StringValue("pool-a"),
-		Size:              types.Int64Value(1),
-		ProfileID:         types.StringValue("profile-1"),
-		ProxyID:           types.StringNull(),
-		ExtensionIDs:      types.ListNull(types.StringType),
-		ChromePolicy:      chromePolicyNull(),
-		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null()),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(false),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringNull(),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(10),
+	if !hasPatch {
+		t.Fatal("clearing profile_id must produce an API patch")
 	}
 
-	params, _, diags := expandUpdateParams(context.Background(), plan, state)
-	if !diags.HasError() {
-		t.Fatal("expected diagnostics for unsupported clear operations")
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": ""}}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
 	}
-	for _, want := range []path.Path{path.Root("name"), path.Root("profile_id"), path.Root("viewport")} {
-		if !hasDiagnosticPath(diags, want) {
-			t.Fatalf("expected diagnostic at %s, got %v", want.String(), diags)
-		}
-	}
-	assertEmptyUpdateSDKParams(t, params)
 }
 
 func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {

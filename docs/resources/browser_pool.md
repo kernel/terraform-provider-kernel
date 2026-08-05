@@ -22,19 +22,19 @@ Kernel browser pool durable configuration.
 ### Optional
 
 - `chrome_policy` (String) JSON object of Chrome enterprise policy overrides. Stored as written; key order and whitespace are ignored when detecting changes.
-- `extension_ids` (List of String) Ordered extension IDs to load into browsers created by this pool.
-- `fill_rate_per_minute` (Number) Percentage of the pool to fill per minute.
+- `extension_ids` (List of String) Ordered extension IDs to load into browsers created by this pool. For an existing pool, omission preserves the current extensions; set an empty list to clear them.
+- `fill_rate_per_minute` (Number) Percentage of the pool to fill per minute. The maximum is determined by the Kernel organization.
 - `headless` (Boolean) Launch browsers using a headless image.
 - `kiosk_mode` (Boolean) Launch browsers in kiosk mode.
-- `name` (String) Optional browser pool name. Must be unique within the project.
-- `profile_id` (String) Optional profile ID to load for browsers created by this pool.
+- `name` (String) Optional browser pool name. Must be unique within the project. Removing an existing name replaces the pool because the API cannot clear it in place.
+- `profile_id` (String) Optional profile ID to load for browsers created by this pool. Removing an existing profile ID clears the profile in place.
 - `project_id` (String) Project this browser pool belongs to. Defaults to the provider `project_id` when unset; when neither is set, the API key's project binding determines the project. Once created the pool keeps its project, and changing this attribute replaces the pool.
 - `proxy_id` (String) Optional proxy ID to use for browsers created by this pool.
 - `rebuild_idle_browsers_on_update` (Boolean) When true, changes to profile_id, proxy_id, extension_ids, chrome_policy, viewport, headless, kiosk_mode, stealth, or start_url discard browsers that are idle when the update runs so replacements use the new configuration. Browsers that are warming or currently leased are not rebuilt. Kernel does not store this provider-local setting, so imported browser pools default to false unless configured otherwise.
 - `start_url` (String) Optional URL to navigate to when a browser is warmed into the pool.
 - `stealth` (Boolean) Launch browsers in stealth mode.
 - `timeout_seconds` (Number) Default idle timeout in seconds for acquired browsers.
-- `viewport` (Attributes) Optional browser viewport. (see [below for nested schema](#nestedatt--viewport))
+- `viewport` (Attributes) Optional browser viewport. Removing an existing viewport replaces the pool because the API cannot clear it in place. (see [below for nested schema](#nestedatt--viewport))
 
 ### Read-Only
 

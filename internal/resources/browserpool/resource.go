@@ -60,7 +60,17 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	var config browserPoolModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
-	if resp.Diagnostics.HasError() || !idleBrowserRebuildWarningRequired(plan, state, config) {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	replacementRequired := browserPoolReplacementRequired(plan, state)
+	if replacementRequired {
+		resp.Diagnostics.AddWarning(
+			"Browser Pool Will Be Replaced",
+			"Applying this plan will replace the browser pool. Completing the replacement deletes the existing pool and all browsers in it. Kernel blocks this provider's non-forceful deletion while any browser is leased; release leased browsers before applying.",
+		)
+	}
+	if replacementRequired || !idleBrowserRebuildWarningRequired(plan, state, config) {
 		return
 	}
 
@@ -71,6 +81,14 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	)
 }
 
+func browserPoolReplacementRequired(plan, state browserPoolModel) bool {
+	// The Framework does not expose schema-level replacement paths to the
+	// resource-level ModifyPlan response, so mirror them here for the warning.
+	projectChanges := !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID)
+	clearsViewport := plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown()
+	return projectChanges || clearsString(plan.Name, state.Name) || clearsViewport
+}
+
 func idleBrowserRebuildWarningRequired(plan, state, config browserPoolModel) bool {
 	rebuildPossible := isKnownBool(plan.RebuildIdle) && plan.RebuildIdle.ValueBool()
 	rebuildPossible = rebuildPossible || config.RebuildIdle.IsUnknown() ||
@@ -78,16 +96,6 @@ func idleBrowserRebuildWarningRequired(plan, state, config browserPoolModel) boo
 	if !rebuildPossible {
 		return false
 	}
-	if !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID) {
-		return false
-	}
-
-	var diags diag.Diagnostics
-	validateSupportedUpdateClears(&diags, plan, state)
-	if diags.HasError() {
-		return false
-	}
-
 	return browserLaunchConfigurationMayChange(plan, state, config)
 }
 

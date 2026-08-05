@@ -97,16 +97,17 @@ func TestResourceMetadataAndSchema(t *testing.T) {
 	}
 }
 
-func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
+func TestModifyPlanWarnings(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		apply       func(*browserPoolModel)
-		applyConfig func(*browserPoolModel)
-		nullPlan    bool
-		nullState   bool
-		wantWarn    bool
+		name                string
+		apply               func(*browserPoolModel)
+		applyConfig         func(*browserPoolModel)
+		nullPlan            bool
+		nullState           bool
+		wantIdleWarn        bool
+		wantReplacementWarn bool
 	}{
 		{
 			name: "known launch change while enabled",
@@ -114,7 +115,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Stealth = types.BoolValue(true)
 				plan.RebuildIdle = types.BoolValue(true)
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "launch change while disabled",
@@ -158,7 +159,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.ProfileID = types.StringUnknown()
 				plan.RebuildIdle = types.BoolValue(true)
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "configured unknown computed launch value",
@@ -166,7 +167,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Stealth = types.BoolUnknown()
 				plan.RebuildIdle = types.BoolValue(true)
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "unrelated unknown with known launch change",
@@ -175,7 +176,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Stealth = types.BoolValue(true)
 				plan.RebuildIdle = types.BoolValue(true)
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "replacement with known launch change",
@@ -184,14 +185,23 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Stealth = types.BoolValue(true)
 				plan.RebuildIdle = types.BoolValue(true)
 			},
+			wantReplacementWarn: true,
 		},
 		{
-			name: "unsupported clear blocks launch update",
+			name: "name clear replacement suppresses idle rebuild warning",
 			apply: func(plan *browserPoolModel) {
 				plan.Name = types.StringNull()
 				plan.Stealth = types.BoolValue(true)
 				plan.RebuildIdle = types.BoolValue(true)
 			},
+			wantReplacementWarn: true,
+		},
+		{
+			name: "viewport clear replacement",
+			apply: func(plan *browserPoolModel) {
+				plan.Viewport = types.ObjectNull(plan.Viewport.AttributeTypes(context.Background()))
+			},
+			wantReplacementWarn: true,
 		},
 		{
 			name: "unknown required viewport dimension",
@@ -199,7 +209,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Viewport = viewportObjectForTest(types.Int64Unknown(), types.Int64Value(800), types.Int64Value(60))
 				plan.RebuildIdle = types.BoolValue(true)
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "unknown rebuild preference with known launch change",
@@ -207,7 +217,7 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				plan.Stealth = types.BoolValue(true)
 				plan.RebuildIdle = types.BoolUnknown()
 			},
-			wantWarn: true,
+			wantIdleWarn: true,
 		},
 		{
 			name: "create",
@@ -245,11 +255,14 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
 			}
-			gotWarn := resp.Diagnostics.WarningsCount() == 1
-			if gotWarn != test.wantWarn {
-				t.Fatalf("warning present = %t, want %t: %v", gotWarn, test.wantWarn, resp.Diagnostics)
+			wantWarnings := 0
+			if test.wantIdleWarn || test.wantReplacementWarn {
+				wantWarnings = 1
 			}
-			if test.wantWarn {
+			if resp.Diagnostics.WarningsCount() != wantWarnings {
+				t.Fatalf("warnings = %d, want %d: %v", resp.Diagnostics.WarningsCount(), wantWarnings, resp.Diagnostics)
+			}
+			if test.wantIdleWarn {
 				if !hasDiagnosticPath(resp.Diagnostics, path.Root("rebuild_idle_browsers_on_update")) {
 					t.Fatalf("expected warning at rebuild_idle_browsers_on_update, got %v", resp.Diagnostics)
 				}
@@ -258,6 +271,15 @@ func TestModifyPlanWarnsBeforeIdleBrowserRebuild(t *testing.T) {
 				}
 				if !strings.Contains(resp.Diagnostics.Warnings()[0].Detail(), "may discard") {
 					t.Fatalf("warning does not disclose the possible discard: %v", resp.Diagnostics.Warnings()[0])
+				}
+			}
+			if test.wantReplacementWarn {
+				warning := resp.Diagnostics.Warnings()[0]
+				if !strings.Contains(warning.Summary(), "Browser Pool Will Be Replaced") {
+					t.Fatalf("unexpected warning: %v", warning)
+				}
+				if !strings.Contains(warning.Detail(), "all browsers") || !strings.Contains(warning.Detail(), "leased") {
+					t.Fatalf("replacement warning omits browser deletion or lease blocking: %v", warning)
 				}
 			}
 			if !resp.Plan.Raw.Equal(req.Plan.Raw) {
