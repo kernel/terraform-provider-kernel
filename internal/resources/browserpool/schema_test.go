@@ -152,12 +152,20 @@ func TestSchemaRebuildIdleBrowsersOnUpdateDefaultsFalse(t *testing.T) {
 
 func TestSchemaRefreshOnProfileUpdatePreservesStateDuringUnrelatedUpdate(t *testing.T) {
 	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
-	planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
-		types.BoolValue(false), types.BoolUnknown(), types.BoolNull(),
-		tftypes.NewValue(tftypes.String, "profile-1"), tftypes.NewValue(tftypes.String, "profile-1"))
+	tests := map[string]tftypes.Value{
+		"with profile":    tftypes.NewValue(tftypes.String, "profile-1"),
+		"without profile": tftypes.NewValue(tftypes.String, nil),
+	}
 
-	if !planned.Equal(types.BoolValue(false)) {
-		t.Fatalf("unset refresh_on_profile_update should keep the state value, got %v", planned)
+	for name, profileID := range tests {
+		t.Run(name, func(t *testing.T) {
+			planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
+				types.BoolValue(false), types.BoolUnknown(), types.BoolNull(), profileID, profileID)
+
+			if !planned.Equal(types.BoolValue(false)) {
+				t.Fatalf("unset refresh_on_profile_update should keep the state value, got %v", planned)
+			}
+		})
 	}
 }
 

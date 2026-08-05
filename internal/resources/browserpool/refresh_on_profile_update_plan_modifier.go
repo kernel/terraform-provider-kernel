@@ -13,7 +13,7 @@ var _ planmodifier.Bool = preserveRefreshOnProfileUpdate{}
 type preserveRefreshOnProfileUpdate struct{}
 
 func (preserveRefreshOnProfileUpdate) Description(context.Context) string {
-	return "Preserves refresh_on_profile_update when the planned browser pool still has a profile."
+	return "Preserves refresh_on_profile_update when profile_id is unchanged."
 }
 
 func (m preserveRefreshOnProfileUpdate) MarkdownDescription(ctx context.Context) string {

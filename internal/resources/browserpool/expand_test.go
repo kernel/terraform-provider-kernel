@@ -19,6 +19,7 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 		Name:              types.StringValue("pool-a"),
 		Size:              types.Int64Value(5),
 		ProfileID:         types.StringValue("profile-1"),
+		RefreshOnProfile:  types.BoolValue(false),
 		ProxyID:           types.StringValue("proxy-1"),
 		ExtensionIDs:      stringListForTest("ext-b", "ext-a"),
 		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
@@ -38,19 +39,20 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
-		"name":                 "pool-a",
-		"size":                 float64(5),
-		"profile":              map[string]any{"id": "profile-1"},
-		"proxy_id":             "proxy-1",
-		"extensions":           []any{map[string]any{"id": "ext-b"}, map[string]any{"id": "ext-a"}},
-		"chrome_policy":        map[string]any{"HomepageLocation": "https://example.com"},
-		"viewport":             map[string]any{"width": float64(1280), "height": float64(800), "refresh_rate": float64(60)},
-		"headless":             true,
-		"kiosk_mode":           true,
-		"stealth":              false,
-		"start_url":            "https://start.example",
-		"timeout_seconds":      float64(90),
-		"fill_rate_per_minute": float64(20),
+		"name":                      "pool-a",
+		"size":                      float64(5),
+		"profile":                   map[string]any{"id": "profile-1"},
+		"refresh_on_profile_update": false,
+		"proxy_id":                  "proxy-1",
+		"extensions":                []any{map[string]any{"id": "ext-b"}, map[string]any{"id": "ext-a"}},
+		"chrome_policy":             map[string]any{"HomepageLocation": "https://example.com"},
+		"viewport":                  map[string]any{"width": float64(1280), "height": float64(800), "refresh_rate": float64(60)},
+		"headless":                  true,
+		"kiosk_mode":                true,
+		"stealth":                   false,
+		"start_url":                 "https://start.example",
+		"timeout_seconds":           float64(90),
+		"fill_rate_per_minute":      float64(20),
 	}
 
 	if !jsonEqual(t, body, want) {
@@ -61,6 +63,7 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 func TestExpandCreateParamsOmitsUnknownServerDefaults(t *testing.T) {
 	model := browserPoolModel{
 		Size:              types.Int64Value(1),
+		RefreshOnProfile:  types.BoolUnknown(),
 		Headless:          types.BoolUnknown(),
 		KioskMode:         types.BoolUnknown(),
 		Stealth:           types.BoolUnknown(),
