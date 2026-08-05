@@ -594,7 +594,7 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	plan := browserPoolModel{
 		Name:              types.StringValue("pool-a"),
 		Size:              types.Int64Value(1),
-		ProfileID:         types.StringValue("profile-1"),
+		ProfileID:         types.StringNull(),
 		ProxyID:           types.StringNull(),
 		ExtensionIDs:      types.ListNull(types.StringType),
 		ChromePolicy:      chromePolicyNull(),
@@ -632,11 +632,33 @@ func TestExpandUpdateParamsClearsSupportedDurableConfig(t *testing.T) {
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
 		"discard_all_idle": true,
+		"profile":          map[string]any{"id": ""},
 		"proxy_id":         "",
 		"extensions":       []any{},
 		"chrome_policy":    map[string]any{},
 		"start_url":        "",
 	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsClearsOnlyProfile(t *testing.T) {
+	state := updateModelForTest()
+	state.ProfileID = types.StringValue("profile-1")
+	plan := state
+	plan.ProfileID = types.StringNull()
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("clearing profile_id must produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": ""}}
 	if !jsonEqual(t, body, want) {
 		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
 	}
@@ -678,7 +700,7 @@ func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
 	if !diags.HasError() {
 		t.Fatal("expected diagnostics for unsupported clear operations")
 	}
-	for _, want := range []path.Path{path.Root("name"), path.Root("profile_id"), path.Root("viewport")} {
+	for _, want := range []path.Path{path.Root("name"), path.Root("viewport")} {
 		if !hasDiagnosticPath(diags, want) {
 			t.Fatalf("expected diagnostic at %s, got %v", want.String(), diags)
 		}

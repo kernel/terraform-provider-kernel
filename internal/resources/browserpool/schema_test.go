@@ -185,6 +185,44 @@ func TestSchemaProjectIDSemantics(t *testing.T) {
 	}
 }
 
+func TestSchemaUnsupportedClearsPlanReplacement(t *testing.T) {
+	s := BrowserPoolSchema()
+
+	name := stringAttribute(t, s, "name")
+	_, requiresReplace := runStringPlanModifiers(t, name,
+		types.StringValue("configured"), types.StringNull(), types.StringNull())
+	if !requiresReplace {
+		t.Fatal("clearing name must replace the pool")
+	}
+
+	_, requiresReplace = runStringPlanModifiers(t, name,
+		types.StringValue("old"), types.StringValue("new"), types.StringValue("new"))
+	if requiresReplace {
+		t.Fatal("changing name to another value must remain an in-place update")
+	}
+
+	profile := stringAttribute(t, s, "profile_id")
+	_, requiresReplace = runStringPlanModifiers(t, profile,
+		types.StringValue("profile-1"), types.StringNull(), types.StringNull())
+	if requiresReplace {
+		t.Fatal("clearing profile_id must remain an in-place update")
+	}
+
+	viewport := singleNestedAttribute(t, s, "viewport")
+	viewportValue := types.ObjectValueMust(
+		map[string]tfattr.Type{
+			"width": types.Int64Type, "height": types.Int64Type, "refresh_rate": types.Int64Type,
+		},
+		map[string]tfattr.Value{
+			"width": types.Int64Value(1280), "height": types.Int64Value(800), "refresh_rate": types.Int64Value(60),
+		},
+	)
+	viewportNull := types.ObjectNull(viewportValue.AttributeTypes(context.Background()))
+	if !runObjectPlanModifiers(t, viewport, viewportValue, viewportNull, viewportNull) {
+		t.Fatal("clearing viewport must replace the pool")
+	}
+}
+
 func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, plan, config types.String) (types.String, bool) {
 	t.Helper()
 
@@ -208,6 +246,31 @@ func runStringPlanModifiers(t *testing.T, attr rschema.StringAttribute, state, p
 		requiresReplace = requiresReplace || resp.RequiresReplace
 	}
 	return req.PlanValue, requiresReplace
+}
+
+func runObjectPlanModifiers(t *testing.T, attr rschema.SingleNestedAttribute, state, plan, config types.Object) bool {
+	t.Helper()
+
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.ObjectRequest{
+		State:       tfsdk.State{Raw: nonNullRaw},
+		Plan:        tfsdk.Plan{Raw: nonNullRaw},
+		StateValue:  state,
+		PlanValue:   plan,
+		ConfigValue: config,
+	}
+
+	requiresReplace := false
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.ObjectResponse{PlanValue: req.PlanValue}
+		m.PlanModifyObject(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+		requiresReplace = requiresReplace || resp.RequiresReplace
+	}
+	return requiresReplace
 }
 
 func TestSchemaValidatesDurableNumericBounds(t *testing.T) {
@@ -243,6 +306,152 @@ func TestSchemaValidatesChromePolicyJSON(t *testing.T) {
 	assertStringRejects(t, attr, "chrome_policy", `null`)
 	assertStringRejects(t, attr, "chrome_policy", `{"Large":"`+strings.Repeat("a", maxChromePolicyBytes)+`"}`)
 	assertStringAccepts(t, attr, "chrome_policy", `{"HomepageLocation":"https://example.com"}`)
+}
+
+func TestSchemaChromePolicyPreservesStateForEquivalentJSON(t *testing.T) {
+	attr := stringAttribute(t, BrowserPoolSchema(), "chrome_policy")
+	state := types.StringValue(`{"HomepageLocation":"https://example.com","RestoreOnStartup":4}`)
+	config := types.StringValue(`{ "RestoreOnStartup": 4, "HomepageLocation": "https://example.com" }`)
+
+	planned, requiresReplace := runStringPlanModifiers(t, attr, state, config, config)
+	if requiresReplace {
+		t.Fatal("equivalent chrome_policy JSON must not replace the pool")
+	}
+	if !planned.Equal(state) {
+		t.Fatalf("equivalent chrome_policy JSON planned as %q, want prior state %q", planned.ValueString(), state.ValueString())
+	}
+
+	changed := types.StringValue(`{"HomepageLocation":"https://kernel.sh","RestoreOnStartup":4}`)
+	planned, _ = runStringPlanModifiers(t, attr, state, changed, changed)
+	if !planned.Equal(changed) {
+		t.Fatalf("changed chrome_policy JSON planned as %q, want configured value %q", planned.ValueString(), changed.ValueString())
+	}
+}
+
+func TestSchemaPreservesComputedDefaultsDuringUnrelatedUpdates(t *testing.T) {
+	s := BrowserPoolSchema()
+
+	for _, name := range []string{"headless", "kiosk_mode", "stealth"} {
+		attr := boolAttribute(t, s, name)
+		planned := runBoolPlanModifiers(t, attr, types.BoolValue(false), types.BoolUnknown(), types.BoolNull())
+		if !planned.Equal(types.BoolValue(false)) {
+			t.Fatalf("%s planned as %v, want prior false state", name, planned)
+		}
+	}
+
+	for _, name := range []string{"timeout_seconds", "fill_rate_per_minute"} {
+		attr := int64Attribute(t, s, name)
+		planned := runInt64PlanModifiers(t, attr, types.Int64Value(42), types.Int64Unknown(), types.Int64Null())
+		if !planned.Equal(types.Int64Value(42)) {
+			t.Fatalf("%s planned as %v, want prior state", name, planned)
+		}
+	}
+
+	viewport := singleNestedAttribute(t, s, "viewport")
+	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
+	planned := runInt64PlanModifiers(t, refreshRate, types.Int64Value(60), types.Int64Unknown(), types.Int64Null())
+	if !planned.Equal(types.Int64Value(60)) {
+		t.Fatalf("viewport.refresh_rate planned as %v, want prior state", planned)
+	}
+}
+
+func TestSchemaLeavesNewViewportRefreshRateUnknown(t *testing.T) {
+	viewport := singleNestedAttribute(t, BrowserPoolSchema(), "viewport")
+	refreshRate := nestedInt64Attribute(t, viewport, "refresh_rate")
+	planned := runInt64PlanModifiers(t, refreshRate, types.Int64Null(), types.Int64Unknown(), types.Int64Null())
+	if !planned.IsUnknown() {
+		t.Fatalf("new viewport refresh_rate planned as %v, want unknown for the API default", planned)
+	}
+}
+
+func TestSchemaPreservesImportedEmptyExtensionIDsWhenConfigurationOmitsThem(t *testing.T) {
+	attr := listAttribute(t, BrowserPoolSchema(), "extension_ids")
+	if !attr.Optional || !attr.Computed || attr.Required {
+		t.Fatalf("extension_ids must be optional and computed, got %#v", attr)
+	}
+	empty := types.ListValueMust(types.StringType, []tfattr.Value{})
+
+	planned := runListPlanModifiers(t, attr, empty, types.ListUnknown(types.StringType), types.ListNull(types.StringType))
+	if !planned.Equal(empty) {
+		t.Fatalf("empty extension_ids planned as %v, want prior empty state when omitted", planned)
+	}
+}
+
+func TestSchemaDefaultsOmittedExtensionIDsOnlyDuringCreate(t *testing.T) {
+	attr := listAttribute(t, BrowserPoolSchema(), "extension_ids")
+	empty := types.ListValueMust(types.StringType, []tfattr.Value{})
+	nullResource := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, nil)
+
+	planned := runListPlanModifiersWithStateRaw(t, attr, nullResource,
+		types.ListNull(types.StringType), types.ListUnknown(types.StringType), types.ListNull(types.StringType))
+	if !planned.Equal(empty) {
+		t.Fatalf("omitted extension_ids planned as %v during create, want empty list", planned)
+	}
+
+	planned = runListPlanModifiersWithStateRaw(t, attr, nullResource,
+		types.ListNull(types.StringType), types.ListUnknown(types.StringType), types.ListUnknown(types.StringType))
+	if !planned.IsUnknown() {
+		t.Fatalf("unknown configured extension_ids planned as %v, want unknown preserved", planned)
+	}
+}
+
+func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan, config types.Bool) types.Bool {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.BoolRequest{
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		m.PlanModifyBool(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
+func runInt64PlanModifiers(t *testing.T, attr rschema.Int64Attribute, state, plan, config types.Int64) types.Int64 {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	req := planmodifier.Int64Request{
+		State: tfsdk.State{Raw: nonNullRaw}, Plan: tfsdk.Plan{Raw: nonNullRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.Int64Response{PlanValue: req.PlanValue}
+		m.PlanModifyInt64(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
+func runListPlanModifiers(t *testing.T, attr rschema.ListAttribute, state, plan, config types.List) types.List {
+	t.Helper()
+	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
+	return runListPlanModifiersWithStateRaw(t, attr, nonNullRaw, state, plan, config)
+}
+
+func runListPlanModifiersWithStateRaw(t *testing.T, attr rschema.ListAttribute, stateRaw tftypes.Value, state, plan, config types.List) types.List {
+	t.Helper()
+	req := planmodifier.ListRequest{
+		State:      tfsdk.State{Raw: stateRaw},
+		StateValue: state, PlanValue: plan, ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.ListResponse{PlanValue: req.PlanValue}
+		m.PlanModifyList(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier returned diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
 }
 
 func TestSchemaValidatesNameAPIContract(t *testing.T) {
