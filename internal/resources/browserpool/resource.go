@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
@@ -64,13 +63,14 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if browserPoolReplacementRequired(plan, state) {
+	replacementRequired := browserPoolReplacementRequired(plan, state)
+	if replacementRequired {
 		resp.Diagnostics.AddWarning(
 			"Browser Pool Will Be Replaced",
 			"Applying this plan will replace the browser pool. Completing the replacement deletes the existing pool and all browsers in it. Kernel blocks this provider's non-forceful deletion while any browser is leased; release leased browsers before applying.",
 		)
 	}
-	if !idleBrowserRebuildWarningRequired(plan, state, config) {
+	if replacementRequired || !idleBrowserRebuildWarningRequired(plan, state, config) {
 		return
 	}
 
@@ -82,7 +82,8 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 }
 
 func browserPoolReplacementRequired(plan, state browserPoolModel) bool {
-	// Keep these conditions aligned with the schema's replacement plan modifiers.
+	// The Framework does not expose schema-level replacement paths to the
+	// resource-level ModifyPlan response, so mirror them here for the warning.
 	projectChanges := !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID)
 	clearsViewport := plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown()
 	return projectChanges || clearsString(plan.Name, state.Name) || clearsViewport
@@ -95,16 +96,6 @@ func idleBrowserRebuildWarningRequired(plan, state, config browserPoolModel) boo
 	if !rebuildPossible {
 		return false
 	}
-	if !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID) {
-		return false
-	}
-
-	var diags diag.Diagnostics
-	validateSupportedUpdateClears(&diags, plan, state)
-	if diags.HasError() {
-		return false
-	}
-
 	return browserLaunchConfigurationMayChange(plan, state, config)
 }
 
@@ -216,7 +207,6 @@ func (r *browserPoolResource) ImportState(ctx context.Context, req resource.Impo
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), poolID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectscope.StateValue(projectID))...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("extension_ids"), types.ListValueMust(types.StringType, nil))...)
 }
 
 func parseImportID(id string) (projectID, poolID string, ok bool) {

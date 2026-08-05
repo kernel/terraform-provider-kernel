@@ -188,7 +188,7 @@ func TestModifyPlanWarnings(t *testing.T) {
 			wantReplacementWarn: true,
 		},
 		{
-			name: "unsupported name clear blocks launch update",
+			name: "name clear replacement suppresses idle rebuild warning",
 			apply: func(plan *browserPoolModel) {
 				plan.Name = types.StringNull()
 				plan.Stealth = types.BoolValue(true)
@@ -197,7 +197,7 @@ func TestModifyPlanWarnings(t *testing.T) {
 			wantReplacementWarn: true,
 		},
 		{
-			name: "unsupported viewport clear",
+			name: "viewport clear replacement",
 			apply: func(plan *browserPoolModel) {
 				plan.Viewport = types.ObjectNull(plan.Viewport.AttributeTypes(context.Background()))
 			},
@@ -384,8 +384,6 @@ func TestResourceImportState(t *testing.T) {
 			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &id)...)
 			var projectID types.String
 			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("project_id"), &projectID)...)
-			var extensionIDs types.List
-			resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("extension_ids"), &extensionIDs)...)
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("read imported state: %v", resp.Diagnostics)
 			}
@@ -395,7 +393,6 @@ func TestResourceImportState(t *testing.T) {
 			if !projectID.Equal(test.wantProjectID) {
 				t.Fatalf("imported project_id = %v, want %v", projectID, test.wantProjectID)
 			}
-			assertStringList(t, extensionIDs, []string{})
 		})
 	}
 }

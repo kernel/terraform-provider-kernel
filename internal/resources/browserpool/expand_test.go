@@ -664,50 +664,6 @@ func TestExpandUpdateParamsClearsOnlyProfile(t *testing.T) {
 	}
 }
 
-func TestExpandUpdateParamsRejectsUnsupportedClears(t *testing.T) {
-	plan := browserPoolModel{
-		Name:              types.StringNull(),
-		Size:              types.Int64Value(1),
-		ProfileID:         types.StringNull(),
-		ProxyID:           types.StringNull(),
-		ExtensionIDs:      types.ListNull(types.StringType),
-		ChromePolicy:      chromePolicyNull(),
-		Viewport:          types.ObjectNull(viewportAttrTypes()),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(false),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringNull(),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(10),
-	}
-	state := browserPoolModel{
-		Name:              types.StringValue("pool-a"),
-		Size:              types.Int64Value(1),
-		ProfileID:         types.StringValue("profile-1"),
-		ProxyID:           types.StringNull(),
-		ExtensionIDs:      types.ListNull(types.StringType),
-		ChromePolicy:      chromePolicyNull(),
-		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Null()),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(false),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringNull(),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(10),
-	}
-
-	params, _, diags := expandUpdateParams(context.Background(), plan, state)
-	if !diags.HasError() {
-		t.Fatal("expected diagnostics for unsupported clear operations")
-	}
-	for _, want := range []path.Path{path.Root("name"), path.Root("viewport")} {
-		if !hasDiagnosticPath(diags, want) {
-			t.Fatalf("expected diagnostic at %s, got %v", want.String(), diags)
-		}
-	}
-	assertEmptyUpdateSDKParams(t, params)
-}
-
 func TestExpandUpdateParamsAccumulatesUnknownDiagnostics(t *testing.T) {
 	// Mirrors the create path: an unknown size must not short-circuit the
 	// optional-unknown checks, so every problem surfaces in one apply cycle.

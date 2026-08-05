@@ -162,9 +162,7 @@ func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	assertStringNull(t, "name", got.Name)
 	assertStringNull(t, "profile_id", got.ProfileID)
 	assertStringNull(t, "proxy_id", got.ProxyID)
-	if !got.ExtensionIDs.IsNull() || got.ExtensionIDs.ElementType(t.Context()) != types.StringType {
-		t.Fatalf("extension_ids = %#v, want typed string list null", got.ExtensionIDs)
-	}
+	assertStringList(t, got.ExtensionIDs, []string{})
 	if !got.ChromePolicy.IsNull() {
 		t.Fatalf("chrome_policy = %#v, want null", got.ChromePolicy)
 	}
@@ -189,7 +187,7 @@ func TestFlattenBrowserPoolNullsOmittedOptionalFields(t *testing.T) {
 	}
 }
 
-func TestFlattenBrowserPoolPreservesExplicitEmptyConfigWhenResolvedIDsAreEmpty(t *testing.T) {
+func TestFlattenBrowserPoolUsesResolvedEmptyExtensionIDs(t *testing.T) {
 	pool := unmarshalBrowserPool(t, `{
 		"id": "pool-1",
 		"extension_ids": [],
@@ -198,7 +196,6 @@ func TestFlattenBrowserPoolPreservesExplicitEmptyConfigWhenResolvedIDsAreEmpty(t
 		}
 	}`)
 	base := browserPoolModel{
-		ExtensionIDs: stringListForTest(),
 		ChromePolicy: chromePolicyValueForTest(`{}`),
 	}
 

@@ -102,7 +102,6 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 		)
 	}
 	validateUpdateKnownValues(&diags, plan)
-	validateSupportedUpdateClears(&diags, plan, state)
 	if diags.HasError() {
 		return kernel.BrowserPoolUpdateParams{}, false, diags
 	}
@@ -336,33 +335,8 @@ func validateUpdateKnownValues(diags *diag.Diagnostics, model browserPoolModel) 
 	requireKnownOptional(diags, path.Root("rebuild_idle_browsers_on_update"), model.RebuildIdle, "updating")
 }
 
-func validateSupportedUpdateClears(diags *diag.Diagnostics, plan, state browserPoolModel) {
-	if clearsString(plan.Name, state.Name) {
-		addUnsupportedClearDiagnostic(
-			diags,
-			path.Root("name"),
-			"The Kernel browser pool API does not currently support clearing a browser pool name. Set a new name or keep the existing name.",
-		)
-	}
-	if plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown() {
-		addUnsupportedClearDiagnostic(
-			diags,
-			path.Root("viewport"),
-			"The Kernel browser pool API does not currently expose a safe viewport clear payload. Set a new viewport or keep the existing viewport.",
-		)
-	}
-}
-
 func clearsString(plan, state types.String) bool {
 	return plan.IsNull() && isKnownString(state)
-}
-
-func addUnsupportedClearDiagnostic(diags *diag.Diagnostics, attrPath path.Path, detail string) {
-	diags.AddAttributeError(
-		attrPath,
-		"Unsupported Browser Pool Clear",
-		detail,
-	)
 }
 
 func requireKnownOptional(diags *diag.Diagnostics, attrPath path.Path, value attr.Value, operation string) {
