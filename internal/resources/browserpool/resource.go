@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	kernel "github.com/kernel/kernel-go-sdk"
 	"github.com/kernel/terraform-provider-kernel/internal/projectscope"
 )
@@ -60,7 +61,16 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	var config browserPoolModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
-	if resp.Diagnostics.HasError() || !idleBrowserRebuildWarningRequired(plan, state, config) {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if browserPoolReplacementRequired(plan, state) {
+		resp.Diagnostics.AddWarning(
+			"Browser Pool Will Be Replaced",
+			"Applying this plan will replace the browser pool. Completing the replacement deletes the existing pool and all browsers in it. Kernel blocks this provider's non-forceful deletion while any browser is leased; release leased browsers before applying.",
+		)
+	}
+	if !idleBrowserRebuildWarningRequired(plan, state, config) {
 		return
 	}
 
@@ -69,6 +79,13 @@ func (r *browserPoolResource) ModifyPlan(ctx context.Context, req resource.Modif
 		"Idle Browser Rebuild May Be Applied",
 		"Applying this plan may discard browsers that are currently idle so Kernel can replace them with the planned browser launch configuration. This occurs only if rebuild_idle_browsers_on_update resolves to true and a launch setting changes. Browsers that are warming or currently leased are not affected. Ready capacity may be reduced while the pool refills.",
 	)
+}
+
+func browserPoolReplacementRequired(plan, state browserPoolModel) bool {
+	// Keep these conditions aligned with the schema's replacement plan modifiers.
+	projectChanges := !plan.ProjectID.IsUnknown() && !plan.ProjectID.Equal(state.ProjectID)
+	clearsViewport := plan.Viewport.IsNull() && !state.Viewport.IsNull() && !state.Viewport.IsUnknown()
+	return projectChanges || clearsString(plan.Name, state.Name) || clearsViewport
 }
 
 func idleBrowserRebuildWarningRequired(plan, state, config browserPoolModel) bool {
@@ -199,6 +216,7 @@ func (r *browserPoolResource) ImportState(ctx context.Context, req resource.Impo
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), poolID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectscope.StateValue(projectID))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("extension_ids"), types.ListValueMust(types.StringType, nil))...)
 }
 
 func parseImportID(id string) (projectID, poolID string, ok bool) {
