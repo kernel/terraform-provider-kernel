@@ -40,6 +40,9 @@ func expandCreateParams(ctx context.Context, model browserPoolModel) (kernel.Bro
 	if isKnownString(model.ProfileID) {
 		params.Profile.ID = kernel.String(model.ProfileID.ValueString())
 	}
+	if isKnownBool(model.RefreshOnProfileUpdate) {
+		params.RefreshOnProfileUpdate = kernel.Bool(model.RefreshOnProfileUpdate.ValueBool())
+	}
 	if isKnownString(model.ProxyID) {
 		params.ProxyID = kernel.String(model.ProxyID.ValueString())
 	}
@@ -124,7 +127,8 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 		params.Size = kernel.Int(plan.Size.ValueInt64())
 		hasPatch = true
 	}
-	if !plan.ProfileID.Equal(state.ProfileID) {
+	profileChanged := !plan.ProfileID.Equal(state.ProfileID)
+	if profileChanged {
 		if plan.ProfileID.IsNull() {
 			params.Profile.ID = kernel.String("")
 			hasPatch = true
@@ -132,6 +136,11 @@ func expandUpdateParams(ctx context.Context, plan, state browserPoolModel) (kern
 			params.Profile.ID = kernel.String(plan.ProfileID.ValueString())
 			hasPatch = true
 		}
+	}
+	// An unknown value on a profile change is omitted so Kernel can choose the applicable default.
+	if (!plan.RefreshOnProfileUpdate.Equal(state.RefreshOnProfileUpdate) || profileChanged) && isKnownBool(plan.RefreshOnProfileUpdate) {
+		params.RefreshOnProfileUpdate = kernel.Bool(plan.RefreshOnProfileUpdate.ValueBool())
+		hasPatch = true
 	}
 	if !plan.ProxyID.Equal(state.ProxyID) {
 		if plan.ProxyID.IsNull() {

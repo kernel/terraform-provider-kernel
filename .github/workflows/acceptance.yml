@@ -82,4 +82,8 @@ jobs:
           KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
           KERNEL_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_PROJECT_ID || '' }}
           KERNEL_ALT_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_ALT_PROJECT_ID || '' }}
-        run: go test -count=1 -timeout=30m -v ${{ matrix.package }} -run TestAcc
+        run: |
+          if [ -z "$KERNEL_BASE_URL" ]; then
+            unset KERNEL_BASE_URL
+          fi
+          go test -count=1 -timeout=30m -v ${{ matrix.package }} -run TestAcc

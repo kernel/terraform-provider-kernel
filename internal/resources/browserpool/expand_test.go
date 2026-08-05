@@ -16,19 +16,20 @@ import (
 
 func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 	model := browserPoolModel{
-		Name:              types.StringValue("pool-a"),
-		Size:              types.Int64Value(5),
-		ProfileID:         types.StringValue("profile-1"),
-		ProxyID:           types.StringValue("proxy-1"),
-		ExtensionIDs:      stringListForTest("ext-b", "ext-a"),
-		ChromePolicy:      chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
-		Viewport:          viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
-		Headless:          types.BoolValue(true),
-		KioskMode:         types.BoolValue(true),
-		Stealth:           types.BoolValue(false),
-		StartURL:          types.StringValue("https://start.example"),
-		TimeoutSeconds:    types.Int64Value(90),
-		FillRatePerMinute: types.Int64Value(20),
+		Name:                   types.StringValue("pool-a"),
+		Size:                   types.Int64Value(5),
+		ProfileID:              types.StringValue("profile-1"),
+		RefreshOnProfileUpdate: types.BoolValue(false),
+		ProxyID:                types.StringValue("proxy-1"),
+		ExtensionIDs:           stringListForTest("ext-b", "ext-a"),
+		ChromePolicy:           chromePolicyValueForTest(`{"HomepageLocation":"https://example.com"}`),
+		Viewport:               viewportObjectForTest(types.Int64Value(1280), types.Int64Value(800), types.Int64Value(60)),
+		Headless:               types.BoolValue(true),
+		KioskMode:              types.BoolValue(true),
+		Stealth:                types.BoolValue(false),
+		StartURL:               types.StringValue("https://start.example"),
+		TimeoutSeconds:         types.Int64Value(90),
+		FillRatePerMinute:      types.Int64Value(20),
 	}
 
 	params, diags := expandCreateParams(context.Background(), model)
@@ -38,19 +39,20 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 
 	body := marshalSDKParams(t, params)
 	want := map[string]any{
-		"name":                 "pool-a",
-		"size":                 float64(5),
-		"profile":              map[string]any{"id": "profile-1"},
-		"proxy_id":             "proxy-1",
-		"extensions":           []any{map[string]any{"id": "ext-b"}, map[string]any{"id": "ext-a"}},
-		"chrome_policy":        map[string]any{"HomepageLocation": "https://example.com"},
-		"viewport":             map[string]any{"width": float64(1280), "height": float64(800), "refresh_rate": float64(60)},
-		"headless":             true,
-		"kiosk_mode":           true,
-		"stealth":              false,
-		"start_url":            "https://start.example",
-		"timeout_seconds":      float64(90),
-		"fill_rate_per_minute": float64(20),
+		"name":                      "pool-a",
+		"size":                      float64(5),
+		"profile":                   map[string]any{"id": "profile-1"},
+		"refresh_on_profile_update": false,
+		"proxy_id":                  "proxy-1",
+		"extensions":                []any{map[string]any{"id": "ext-b"}, map[string]any{"id": "ext-a"}},
+		"chrome_policy":             map[string]any{"HomepageLocation": "https://example.com"},
+		"viewport":                  map[string]any{"width": float64(1280), "height": float64(800), "refresh_rate": float64(60)},
+		"headless":                  true,
+		"kiosk_mode":                true,
+		"stealth":                   false,
+		"start_url":                 "https://start.example",
+		"timeout_seconds":           float64(90),
+		"fill_rate_per_minute":      float64(20),
 	}
 
 	if !jsonEqual(t, body, want) {
@@ -60,12 +62,13 @@ func TestExpandCreateParamsMapsDurableConfigToSDK(t *testing.T) {
 
 func TestExpandCreateParamsOmitsUnknownServerDefaults(t *testing.T) {
 	model := browserPoolModel{
-		Size:              types.Int64Value(1),
-		Headless:          types.BoolUnknown(),
-		KioskMode:         types.BoolUnknown(),
-		Stealth:           types.BoolUnknown(),
-		TimeoutSeconds:    types.Int64Unknown(),
-		FillRatePerMinute: types.Int64Unknown(),
+		Size:                   types.Int64Value(1),
+		RefreshOnProfileUpdate: types.BoolUnknown(),
+		Headless:               types.BoolUnknown(),
+		KioskMode:              types.BoolUnknown(),
+		Stealth:                types.BoolUnknown(),
+		TimeoutSeconds:         types.Int64Unknown(),
+		FillRatePerMinute:      types.Int64Unknown(),
 	}
 
 	params, diags := expandCreateParams(context.Background(), model)
@@ -399,6 +402,127 @@ func TestExpandUpdateParamsDoesNotRebuildIdleBrowsersWithoutLaunchChanges(t *tes
 		t.Fatal("local-only preference change produced an API patch")
 	}
 	assertEmptyUpdateSDKParams(t, params)
+}
+
+func TestExpandUpdateParamsMapsRefreshOnProfileUpdateChanges(t *testing.T) {
+	tests := map[string]struct {
+		plan  types.Bool
+		state types.Bool
+		want  bool
+	}{
+		"enable":  {plan: types.BoolValue(true), state: types.BoolValue(false), want: true},
+		"disable": {plan: types.BoolValue(false), state: types.BoolValue(true), want: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			params, hasPatch, diags := expandUpdateParams(
+				context.Background(),
+				refreshOnProfileUpdateModel(test.plan),
+				refreshOnProfileUpdateModel(test.state),
+			)
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
+			}
+			if !hasPatch {
+				t.Fatal("refresh_on_profile_update change did not produce an API patch")
+			}
+
+			body := marshalSDKParams(t, params)
+			want := map[string]any{"refresh_on_profile_update": test.want}
+			if !jsonEqual(t, body, want) {
+				t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+			}
+		})
+	}
+}
+
+func TestExpandUpdateParamsOmitsUnchangedRefreshOnProfileUpdate(t *testing.T) {
+	model := refreshOnProfileUpdateModel(types.BoolValue(true))
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), model, model)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if hasPatch {
+		t.Fatal("unchanged refresh_on_profile_update produced an API patch")
+	}
+	assertEmptyUpdateSDKParams(t, params)
+}
+
+func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolValue(false))
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile change did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"profile":                   map[string]any{"id": "profile-2"},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsPreservesExplicitRefreshWhenProfileIsRemoved(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolValue(false))
+	plan.ProfileID = types.StringNull()
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile removal did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{
+		"profile":                   map[string]any{"id": ""},
+		"refresh_on_profile_update": false,
+	}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func TestExpandUpdateParamsLetsAPIChooseRefreshDefaultWhenProfileChanges(t *testing.T) {
+	plan := refreshOnProfileUpdateModel(types.BoolUnknown())
+	plan.ProfileID = types.StringValue("profile-2")
+	state := refreshOnProfileUpdateModel(types.BoolValue(false))
+	state.ProfileID = types.StringValue("profile-1")
+
+	params, hasPatch, diags := expandUpdateParams(context.Background(), plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !hasPatch {
+		t.Fatal("profile change did not produce an API patch")
+	}
+
+	body := marshalSDKParams(t, params)
+	want := map[string]any{"profile": map[string]any{"id": "profile-2"}}
+	if !jsonEqual(t, body, want) {
+		t.Fatalf("expanded SDK JSON mismatch\ngot:  %#v\nwant: %#v", body, want)
+	}
+}
+
+func refreshOnProfileUpdateModel(value types.Bool) browserPoolModel {
+	model := updateModelForTest()
+	model.RefreshOnProfileUpdate = value
+	return model
 }
 
 func TestBrowserLaunchConfigurationChangedForEachLaunchField(t *testing.T) {

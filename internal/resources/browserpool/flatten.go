@@ -31,21 +31,22 @@ func flattenBrowserPool(pool kernel.BrowserPool, base browserPoolModel) (browser
 	}
 
 	model := browserPoolModel{
-		ID:                types.StringValue(pool.ID),
-		Name:              flattenName(pool, &diags),
-		Size:              types.Int64Value(config.Size),
-		ProfileID:         flattenResolvedProfileID(pool, config, &diags),
-		ProxyID:           flattenString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
-		ExtensionIDs:      flattenResolvedExtensionIDs(pool, config, base.ExtensionIDs, &diags),
-		ChromePolicy:      omittedChromePolicy(config.JSON.ChromePolicy.Raw(), base.ChromePolicy),
-		Viewport:          types.ObjectNull(viewportAttrTypes()),
-		Headless:          flattenBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
-		KioskMode:         flattenBool("browser_pool_config.kiosk_mode", config.JSON.KioskMode.Raw(), config.JSON.KioskMode.Valid(), config.KioskMode, &diags),
-		Stealth:           flattenBool("browser_pool_config.stealth", config.JSON.Stealth.Raw(), config.JSON.Stealth.Valid(), config.Stealth, &diags),
-		StartURL:          flattenString("browser_pool_config.start_url", config.JSON.StartURL.Raw(), config.JSON.StartURL.Valid(), config.StartURL, &diags),
-		TimeoutSeconds:    flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
-		FillRatePerMinute: flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
-		RebuildIdle:       rebuildIdle,
+		ID:                     types.StringValue(pool.ID),
+		Name:                   flattenName(pool, &diags),
+		Size:                   types.Int64Value(config.Size),
+		ProfileID:              flattenResolvedProfileID(pool, config, &diags),
+		RefreshOnProfileUpdate: flattenBool("browser_pool_config.refresh_on_profile_update", config.JSON.RefreshOnProfileUpdate.Raw(), config.JSON.RefreshOnProfileUpdate.Valid(), config.RefreshOnProfileUpdate, &diags),
+		ProxyID:                flattenString("browser_pool_config.proxy_id", config.JSON.ProxyID.Raw(), config.JSON.ProxyID.Valid(), config.ProxyID, &diags),
+		ExtensionIDs:           flattenResolvedExtensionIDs(pool, config, base.ExtensionIDs, &diags),
+		ChromePolicy:           omittedChromePolicy(config.JSON.ChromePolicy.Raw(), base.ChromePolicy),
+		Viewport:               types.ObjectNull(viewportAttrTypes()),
+		Headless:               flattenBool("browser_pool_config.headless", config.JSON.Headless.Raw(), config.JSON.Headless.Valid(), config.Headless, &diags),
+		KioskMode:              flattenBool("browser_pool_config.kiosk_mode", config.JSON.KioskMode.Raw(), config.JSON.KioskMode.Valid(), config.KioskMode, &diags),
+		Stealth:                flattenBool("browser_pool_config.stealth", config.JSON.Stealth.Raw(), config.JSON.Stealth.Valid(), config.Stealth, &diags),
+		StartURL:               flattenString("browser_pool_config.start_url", config.JSON.StartURL.Raw(), config.JSON.StartURL.Valid(), config.StartURL, &diags),
+		TimeoutSeconds:         flattenTimeoutSeconds(config.JSON.TimeoutSeconds.Raw(), config.JSON.TimeoutSeconds.Valid(), config.TimeoutSeconds, &diags),
+		FillRatePerMinute:      flattenFillRatePerMinute(config.JSON.FillRatePerMinute.Raw(), config.JSON.FillRatePerMinute.Valid(), config.FillRatePerMinute, &diags),
+		RebuildIdle:            rebuildIdle,
 	}
 
 	if responseFieldPresent(config.JSON.ChromePolicy.Raw()) {

@@ -41,6 +41,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(browserPoolResourceName, "headless", "true"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "kiosk_mode", "false"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "stealth", "false"),
+					resource.TestCheckResourceAttr(browserPoolResourceName, "refresh_on_profile_update", "false"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "timeout_seconds", "90"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "fill_rate_per_minute", "0"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "rebuild_idle_browsers_on_update", "true"),
@@ -55,6 +56,7 @@ func TestAccBrowserPoolLifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(browserPoolResourceName, "size", "1"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "start_url", "https://example.com/two"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "stealth", "true"),
+					resource.TestCheckResourceAttr(browserPoolResourceName, "refresh_on_profile_update", "false"),
 					resource.TestCheckResourceAttr(browserPoolResourceName, "rebuild_idle_browsers_on_update", "true"),
 					testAccCheckAcquiredBrowserStealth(t, browserPoolResourceName, true),
 				),
@@ -172,6 +174,7 @@ resource "kernel_browser_pool" "test" {
   headless                        = true
   kiosk_mode                      = false
   stealth                         = %[3]t
+  refresh_on_profile_update       = false
   timeout_seconds                 = 90
   fill_rate_per_minute            = 0
   rebuild_idle_browsers_on_update = true

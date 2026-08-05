@@ -27,6 +27,7 @@ func TestSchemaContainsOnlySupportedAttributes(t *testing.T) {
 		"project_id":                      {},
 		"size":                            {},
 		"profile_id":                      {},
+		"refresh_on_profile_update":       {},
 		"proxy_id":                        {},
 		"extension_ids":                   {},
 		"chrome_policy":                   {},
@@ -89,6 +90,9 @@ func TestSchemaRequiredComputedOptionalSemantics(t *testing.T) {
 	assertBoolAttribute(t, s, "stealth", func(attr rschema.BoolAttribute) bool {
 		return attr.Optional && attr.Computed && !attr.Required
 	})
+	assertBoolAttribute(t, s, "refresh_on_profile_update", func(attr rschema.BoolAttribute) bool {
+		return attr.Optional && attr.Computed && !attr.Required
+	})
 	assertInt64Attribute(t, s, "timeout_seconds", func(attr rschema.Int64Attribute) bool {
 		return attr.Optional && attr.Computed && !attr.Required
 	})
@@ -143,6 +147,99 @@ func TestSchemaRebuildIdleBrowsersOnUpdateDefaultsFalse(t *testing.T) {
 	}
 	if !resp.PlanValue.Equal(types.BoolValue(false)) {
 		t.Fatalf("rebuild_idle_browsers_on_update default = %v, want false", resp.PlanValue)
+	}
+}
+
+func TestSchemaRefreshOnProfileUpdatePreservesStateDuringUnrelatedUpdate(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	tests := map[string]struct {
+		state     types.Bool
+		profileID tftypes.Value
+	}{
+		"with profile": {
+			state:     types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+		"without profile": {
+			state:     types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+		"null value from existing state": {
+			state:     types.BoolNull(),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
+				test.state, types.BoolUnknown(), types.BoolNull(), test.profileID, test.profileID)
+
+			if !planned.Equal(test.state) {
+				t.Fatalf("unset refresh_on_profile_update should keep the state value, got %v", planned)
+			}
+		})
+	}
+}
+
+func TestSchemaRefreshOnProfileUpdateDoesNotPreserveStateDuringCreate(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	nullResource := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, nil)
+	req := planmodifier.BoolRequest{
+		State:       tfsdk.State{Raw: nullResource},
+		StateValue:  types.BoolNull(),
+		PlanValue:   types.BoolUnknown(),
+		ConfigValue: types.BoolNull(),
+	}
+
+	for _, modifier := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		modifier.PlanModifyBool(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	if !req.PlanValue.IsUnknown() {
+		t.Fatalf("refresh_on_profile_update planned as %v during create, want unknown", req.PlanValue)
+	}
+}
+
+func TestSchemaRefreshOnProfileUpdateDoesNotPreserveStateWhenProfileIsRemoved(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
+		types.BoolValue(true), types.BoolUnknown(), types.BoolNull(),
+		tftypes.NewValue(tftypes.String, "profile-1"), tftypes.NewValue(tftypes.String, nil))
+
+	if !planned.IsUnknown() {
+		t.Fatalf("removed profile planned refresh_on_profile_update as %v, want unknown API default", planned)
+	}
+}
+
+func TestSchemaRefreshOnProfileUpdateDoesNotPreserveStateWhenProfileChanges(t *testing.T) {
+	tests := map[string]struct {
+		stateProfileID tftypes.Value
+		planProfileID  tftypes.Value
+	}{
+		"attach": {
+			stateProfileID: tftypes.NewValue(tftypes.String, nil),
+			planProfileID:  tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+		"change": {
+			stateProfileID: tftypes.NewValue(tftypes.String, "profile-1"),
+			planProfileID:  tftypes.NewValue(tftypes.String, "profile-2"),
+		},
+	}
+
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			planned := runRefreshOnProfileUpdatePlanModifiers(t, attr,
+				types.BoolValue(false), types.BoolUnknown(), types.BoolNull(), test.stateProfileID, test.planProfileID)
+			if !planned.IsUnknown() {
+				t.Fatalf("changed profile planned refresh_on_profile_update as %v, want unknown API default", planned)
+			}
+		})
 	}
 }
 
@@ -413,6 +510,37 @@ func runBoolPlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan,
 	return req.PlanValue
 }
 
+func runRefreshOnProfileUpdatePlanModifiers(t *testing.T, attr rschema.BoolAttribute, state, plan, config types.Bool, stateProfileID, planProfileID tftypes.Value) types.Bool {
+	t.Helper()
+	profileSchema := rschema.Schema{Attributes: map[string]rschema.Attribute{
+		"profile_id": rschema.StringAttribute{Optional: true},
+	}}
+	stateRaw := tftypes.NewValue(
+		tftypes.Object{AttributeTypes: map[string]tftypes.Type{"profile_id": tftypes.String}},
+		map[string]tftypes.Value{"profile_id": stateProfileID},
+	)
+	planRaw := tftypes.NewValue(
+		tftypes.Object{AttributeTypes: map[string]tftypes.Type{"profile_id": tftypes.String}},
+		map[string]tftypes.Value{"profile_id": planProfileID},
+	)
+	req := planmodifier.BoolRequest{
+		State:       tfsdk.State{Schema: profileSchema, Raw: stateRaw},
+		Plan:        tfsdk.Plan{Schema: profileSchema, Raw: planRaw},
+		StateValue:  state,
+		PlanValue:   plan,
+		ConfigValue: config,
+	}
+	for _, m := range attr.PlanModifiers {
+		resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+		m.PlanModifyBool(context.Background(), req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier diagnostics: %v", resp.Diagnostics)
+		}
+		req.PlanValue = resp.PlanValue
+	}
+	return req.PlanValue
+}
+
 func runInt64PlanModifiers(t *testing.T, attr rschema.Int64Attribute, state, plan, config types.Int64) types.Int64 {
 	t.Helper()
 	nonNullRaw := tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{}}, map[string]tftypes.Value{})
@@ -471,6 +599,72 @@ func TestSchemaValidatesProfileIDNonEmpty(t *testing.T) {
 
 	assertStringRejects(t, attr, "profile_id", "")
 	assertStringAccepts(t, attr, "profile_id", "profile-1")
+}
+
+func TestSchemaValidatesRefreshOnProfileUpdateRequiresProfile(t *testing.T) {
+	attr := boolAttribute(t, BrowserPoolSchema(), "refresh_on_profile_update")
+	tests := map[string]struct {
+		refresh   types.Bool
+		profileID tftypes.Value
+		wantError bool
+	}{
+		"true without profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+			wantError: true,
+		},
+		"false without profile": {
+			refresh:   types.BoolValue(false),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+		"true with profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, "profile-1"),
+		},
+		"true with unknown profile": {
+			refresh:   types.BoolValue(true),
+			profileID: tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+		},
+		"unknown without profile": {
+			refresh:   types.BoolUnknown(),
+			profileID: tftypes.NewValue(tftypes.String, nil),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			diags := validateRefreshOnProfileUpdate(attr.BoolValidators(), test.refresh, test.profileID)
+			if test.wantError && !diags.HasError() {
+				t.Fatal("expected validation error")
+			}
+			if !test.wantError && diags.HasError() {
+				t.Fatalf("unexpected validation error: %v", diags)
+			}
+		})
+	}
+}
+
+func validateRefreshOnProfileUpdate(validators []validator.Bool, refresh types.Bool, profileID tftypes.Value) diag.Diagnostics {
+	profileSchema := rschema.Schema{Attributes: map[string]rschema.Attribute{
+		"profile_id": rschema.StringAttribute{Optional: true},
+	}}
+	config := tfsdk.Config{
+		Schema: profileSchema,
+		Raw: tftypes.NewValue(
+			profileSchema.Type().TerraformType(context.Background()),
+			map[string]tftypes.Value{"profile_id": profileID},
+		),
+	}
+	req := validator.BoolRequest{
+		Path:        path.Root("refresh_on_profile_update"),
+		Config:      config,
+		ConfigValue: refresh,
+	}
+	var resp validator.BoolResponse
+	for _, v := range validators {
+		v.ValidateBool(context.Background(), req, &resp)
+	}
+	return resp.Diagnostics
 }
 
 func TestSchemaValidatesProxyIDNonEmpty(t *testing.T) {
