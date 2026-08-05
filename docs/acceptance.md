@@ -48,6 +48,12 @@ sources. The project resource is organization-scoped and does not require it.
 The tests exist in the repository. That does not prove they passed against a
 particular release commit; the release record supplies that evidence.
 
+Browser-pool acceptance does not yet exercise Kernel's conditional default for
+`refresh_on_profile_update`. A future live test should create durable profile
+fixtures through the SDK and cover attaching a profile, changing profiles, and
+clearing the profile while the attribute is omitted. Unit and fake-API tests
+cover those transitions today.
+
 ## Commands
 
 Run packages independently for fast failure isolation:

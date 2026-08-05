@@ -72,7 +72,7 @@ func BrowserPoolSchema() rschema.Schema {
 			"refresh_on_profile_update": rschema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Controls whether idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` when true. When omitted, Kernel chooses the applicable default when a profile is attached, changed, or removed; the API value is stored in state and preserved during unrelated updates. Explicit true or false values are sent unchanged.",
+				MarkdownDescription: "Controls whether idle browsers are refreshed when the pool's profile is updated. Requires `profile_id` when true. When omitted, Kernel chooses the applicable default when a profile is attached, changed, or removed; the API value is stored in state and preserved during unrelated updates. Explicit true or false values are sent unchanged. This is separate from `rebuild_idle_browsers_on_update`, which handles launch-configuration changes made through this Terraform resource.",
 				PlanModifiers: []planmodifier.Bool{
 					preserveRefreshOnProfileUpdate{},
 				},
@@ -205,7 +205,7 @@ func BrowserPoolSchema() rschema.Schema {
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "When true, changes to profile_id, proxy_id, extension_ids, chrome_policy, viewport, headless, kiosk_mode, stealth, or start_url discard browsers that are idle when the update runs so replacements use the new configuration. Browsers that are warming or currently leased are not rebuilt. Kernel does not store this provider-local setting, so imported browser pools default to false unless configured otherwise.",
+				MarkdownDescription: "When true, changes to profile_id, proxy_id, extension_ids, chrome_policy, viewport, headless, kiosk_mode, stealth, or start_url discard browsers that are idle when the update runs so replacements use the new configuration. Browsers that are warming or currently leased are not rebuilt. This does not control later profile-content updates; use `refresh_on_profile_update` for that. Kernel does not store this provider-local setting, so imported browser pools default to false unless configured otherwise.",
 			},
 		},
 	}
