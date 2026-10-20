@@ -333,6 +333,34 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 				return clients.DeleteProject(ctx, "project_123")
 			},
 		},
+		"telemetry destination create": {
+			method: http.MethodPost,
+			path:   "/telemetry/destinations",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateTelemetryDestination(ctx, kernel.TelemetryDestinationNewParams{
+					Name:     "destination",
+					Endpoint: "https://otlp.example",
+				})
+				return err
+			},
+		},
+		"telemetry destination update": {
+			method: http.MethodPatch,
+			path:   "/telemetry/destinations/dest_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.UpdateTelemetryDestination(ctx, "dest_123", kernel.TelemetryDestinationUpdateParams{
+					Name: kernel.String("renamed"),
+				})
+				return err
+			},
+		},
+		"telemetry destination delete": {
+			method: http.MethodDelete,
+			path:   "/telemetry/destinations/dest_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteTelemetryDestination(ctx, "dest_123")
+			},
+		},
 		"profile create": {
 			method:    http.MethodPost,
 			path:      "/profiles",

@@ -16,6 +16,7 @@ Resources:
 
 - `kernel_browser_pool`
 - `kernel_project`
+- `kernel_telemetry_destination`
 
 Data sources:
 
@@ -28,6 +29,7 @@ Import:
 
 - `kernel_browser_pool` by canonical browser pool ID
 - `kernel_project` by canonical project ID
+- `kernel_telemetry_destination` by canonical telemetry destination ID
 
 ## Not Supported
 
@@ -84,7 +86,12 @@ use the project-qualified form to import from a different project:
 terraform import kernel_browser_pool.example <browser-pool-id>
 terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
 terraform import kernel_project.example <project-id>
+terraform import kernel_telemetry_destination.example <telemetry-destination-id>
 ```
+
+Kernel never returns telemetry destination header values, so an imported
+destination has empty header values in state and the next apply sends the
+configured values.
 
 See the [first public release guide](docs/first-release.md) for the exact public
 surface and for adopting existing Kernel projects or browser pools.

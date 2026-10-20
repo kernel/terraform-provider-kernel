@@ -14,6 +14,7 @@ import (
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
 	"github.com/kernel/terraform-provider-kernel/internal/resources/browserpool"
 	projectresource "github.com/kernel/terraform-provider-kernel/internal/resources/project"
+	"github.com/kernel/terraform-provider-kernel/internal/resources/telemetrydestination"
 )
 
 var _ provider.Provider = (*kernelProvider)(nil)
@@ -83,6 +84,7 @@ func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resour
 	return []func() resource.Resource{
 		browserpool.NewResource,
 		projectresource.NewResource,
+		telemetrydestination.NewResource,
 	}
 }
 

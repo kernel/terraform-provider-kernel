@@ -159,6 +159,41 @@ func cleanupProject(t testing.TB, client projectCleaner, id string) {
 	})
 }
 
+func CleanupTelemetryDestination(t testing.TB, id string) {
+	t.Helper()
+
+	cleanupTelemetryDestination(t, ClientFromEnv(), id)
+}
+
+type telemetryDestinationCleaner interface {
+	DeleteTelemetryDestination(context.Context, string) error
+}
+
+func cleanupTelemetryDestination(t testing.TB, client telemetryDestinationCleaner, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteTelemetryDestination(ctx, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel telemetry destination %s: %v", id, err)
+		}
+	})
+}
+
 // CleanupProfile registers a cleanup that deletes the profile from projectID;
 // empty means the env-configured default project.
 func CleanupProfile(t testing.TB, projectID, id string) {

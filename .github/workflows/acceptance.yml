@@ -27,6 +27,9 @@ jobs:
           - name: Project
             package: ./internal/resources/project
             project_id_required: false
+          - name: Telemetry destination
+            package: ./internal/resources/telemetrydestination
+            project_id_required: false
           - name: Project data source
             package: ./internal/datasources/project
             project_id_required: true
