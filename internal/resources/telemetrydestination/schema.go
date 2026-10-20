@@ -35,7 +35,7 @@ func destinationSchema() rschema.Schema {
 			},
 			"endpoint": rschema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Base OTLP/HTTP collector endpoint, without a signal path such as `/v1/logs`. Must be a public http or https URL with no query string or fragment, for example `https://api.honeycomb.io`.",
+				MarkdownDescription: "Base OTLP/HTTP collector endpoint, without a signal path such as `/v1/logs`. Must be a public http or https URL with no query string or fragment.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},

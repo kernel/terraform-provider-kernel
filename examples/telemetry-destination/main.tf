@@ -8,21 +8,26 @@ terraform {
 
 provider "kernel" {}
 
-variable "honeycomb_api_key" {
+variable "otlp_endpoint" {
   type        = string
-  sensitive   = true
-  description = "Honeycomb ingest key sent with each telemetry export."
+  description = "Base OTLP/HTTP collector endpoint, without a signal path such as /v1/logs."
 }
 
-resource "kernel_telemetry_destination" "honeycomb" {
-  name        = "honeycomb"
-  endpoint    = "https://api.honeycomb.io"
+variable "otlp_token" {
+  type        = string
+  sensitive   = true
+  description = "Collector credential sent with each telemetry export."
+}
+
+resource "kernel_telemetry_destination" "example" {
+  name        = "otlp-collector"
+  endpoint    = var.otlp_endpoint
   description = "Browser session telemetry"
   headers = {
-    "x-honeycomb-team" = var.honeycomb_api_key
+    "Authorization" = "Bearer ${var.otlp_token}"
   }
 }
 
 output "telemetry_destination_id" {
-  value = kernel_telemetry_destination.honeycomb.id
+  value = kernel_telemetry_destination.example.id
 }

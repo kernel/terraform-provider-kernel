@@ -17,7 +17,7 @@ Kernel OTLP telemetry destination. Browser sessions reference a destination by I
 
 ### Required
 
-- `endpoint` (String) Base OTLP/HTTP collector endpoint, without a signal path such as `/v1/logs`. Must be a public http or https URL with no query string or fragment, for example `https://api.honeycomb.io`.
+- `endpoint` (String) Base OTLP/HTTP collector endpoint, without a signal path such as `/v1/logs`. Must be a public http or https URL with no query string or fragment.
 - `name` (String) Destination name. Must be unique within the organization, match `^[a-zA-Z0-9._-]{1,255}$`, and not look like an ID.
 
 ### Optional
