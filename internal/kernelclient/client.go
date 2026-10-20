@@ -34,12 +34,13 @@ type Config struct {
 }
 
 type Clients struct {
-	defaultProjectID string
-	projects         kernel.ProjectService
-	profiles         kernel.ProfileService
-	proxies          kernel.ProxyService
-	extensions       kernel.ExtensionService
-	browserPools     kernel.BrowserPoolService
+	defaultProjectID      string
+	projects              kernel.ProjectService
+	profiles              kernel.ProfileService
+	proxies               kernel.ProxyService
+	extensions            kernel.ExtensionService
+	browserPools          kernel.BrowserPoolService
+	telemetryDestinations kernel.TelemetryDestinationService
 }
 
 type Option func(*clientOptions)
@@ -63,12 +64,13 @@ func New(config Config, opts ...Option) Clients {
 	requestOpts := requestOptions(config, clientOpts)
 
 	return Clients{
-		defaultProjectID: config.ProjectID,
-		projects:         kernel.NewProjectService(requestOpts...),
-		profiles:         kernel.NewProfileService(requestOpts...),
-		proxies:          kernel.NewProxyService(requestOpts...),
-		extensions:       kernel.NewExtensionService(requestOpts...),
-		browserPools:     kernel.NewBrowserPoolService(requestOpts...),
+		defaultProjectID:      config.ProjectID,
+		projects:              kernel.NewProjectService(requestOpts...),
+		profiles:              kernel.NewProfileService(requestOpts...),
+		proxies:               kernel.NewProxyService(requestOpts...),
+		extensions:            kernel.NewExtensionService(requestOpts...),
+		browserPools:          kernel.NewBrowserPoolService(requestOpts...),
+		telemetryDestinations: kernel.NewTelemetryDestinationService(requestOpts...),
 	}
 }
 
@@ -94,6 +96,24 @@ func (c Clients) UpdateProject(ctx context.Context, id string, params kernel.Pro
 
 func (c Clients) DeleteProject(ctx context.Context, id string) error {
 	return c.projects.Delete(ctx, id, noMutationRetries())
+}
+
+// Telemetry destinations are org-scoped too.
+
+func (c Clients) CreateTelemetryDestination(ctx context.Context, params kernel.TelemetryDestinationNewParams) (*kernel.OtlpDestination, error) {
+	return c.telemetryDestinations.New(ctx, params, noMutationRetries())
+}
+
+func (c Clients) GetTelemetryDestination(ctx context.Context, id string) (*kernel.OtlpDestination, error) {
+	return c.telemetryDestinations.Get(ctx, id)
+}
+
+func (c Clients) UpdateTelemetryDestination(ctx context.Context, id string, params kernel.TelemetryDestinationUpdateParams) (*kernel.OtlpDestination, error) {
+	return c.telemetryDestinations.Update(ctx, id, params, noMutationRetries())
+}
+
+func (c Clients) DeleteTelemetryDestination(ctx context.Context, id string) error {
+	return c.telemetryDestinations.Delete(ctx, id, noMutationRetries())
 }
 
 // The remaining methods are project-scoped and take the resolved project

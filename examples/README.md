@@ -27,3 +27,4 @@ override setup.
 - [lookups](lookups) shows read-only project, profile, proxy, and extension data sources.
 - [project](project) creates a durable Kernel project with an explicit unique name.
 - [project-scoped-browser-pool](project-scoped-browser-pool) places a browser pool in an explicit project, overriding the provider-level `project_id` default.
+- [telemetry-destination](telemetry-destination) creates an OTLP destination that browser sessions can export telemetry to.
