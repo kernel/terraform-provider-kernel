@@ -31,6 +31,7 @@ func destinationSchema() rschema.Schema {
 				MarkdownDescription: "Destination name. Must be unique within the organization, match `^[a-zA-Z0-9._-]{1,255}$`, and not look like an ID.",
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(namePattern, "must contain only letters, digits, '.', '_' or '-' and be 1-255 characters long"),
+					notIDShapedValidator{},
 				},
 			},
 			"endpoint": rschema.StringAttribute{

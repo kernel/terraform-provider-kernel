@@ -57,3 +57,34 @@ func TestTrimmedPattern(t *testing.T) {
 		}
 	}
 }
+
+func TestNotIDShapedValidator(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		name      types.String
+		wantError bool
+	}{
+		"ordinary name":         {name: types.StringValue("otlp-collector")},
+		"24 chars with capital": {name: types.StringValue("Abcdefghijklmnopqrstuvwx")},
+		"25 lowercase chars":    {name: types.StringValue("abcdefghijklmnopqrstuvwxy")},
+		"null":                  {name: types.StringNull()},
+		"unknown":               {name: types.StringUnknown()},
+		"cuid shaped":           {name: types.StringValue("rtk6e7snm77j251v8qhqrk43"), wantError: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var resp validator.StringResponse
+			notIDShapedValidator{}.ValidateString(context.Background(), validator.StringRequest{
+				Path:        path.Root("name"),
+				ConfigValue: test.name,
+			}, &resp)
+			if got := resp.Diagnostics.HasError(); got != test.wantError {
+				t.Fatalf("has error = %t, want %t: %v", got, test.wantError, resp.Diagnostics)
+			}
+		})
+	}
+}
