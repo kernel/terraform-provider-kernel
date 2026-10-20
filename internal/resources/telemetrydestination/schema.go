@@ -37,21 +37,25 @@ func destinationSchema() rschema.Schema {
 				Required:            true,
 				MarkdownDescription: "Base OTLP/HTTP collector endpoint, without a signal path such as `/v1/logs`. Must be a public http or https URL with no query string or fragment.",
 				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
+					stringvalidator.RegexMatches(trimmedPattern, "must be non-empty with no leading or trailing whitespace"),
 				},
 			},
 			"description": rschema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Destination description.",
 				Validators: []validator.String{
-					stringvalidator.LengthBetween(1, maxDescriptionLength),
+					stringvalidator.LengthAtMost(maxDescriptionLength),
+					stringvalidator.RegexMatches(trimmedPattern, "must be non-empty with no leading or trailing whitespace"),
 				},
 			},
 			"headers": rschema.MapAttribute{
 				Optional:            true,
 				Sensitive:           true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "Headers sent with each export request, typically an ingestion key. Header names are matched case-insensitively. Kernel never returns header values, so Terraform detects added or removed header names but not values changed outside Terraform.",
+				MarkdownDescription: "Headers sent with each export request, typically an ingestion key. Header names are matched case-insensitively. Kernel never returns header values, so Terraform detects added or removed header names but not values changed outside Terraform. After import, header values are empty in state and the next apply sends the configured values.",
+				Validators: []validator.Map{
+					uniqueHeaderNamesValidator{},
+				},
 			},
 		},
 	}

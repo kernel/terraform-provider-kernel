@@ -206,3 +206,18 @@ func TestSchemaMarksHeadersSensitive(t *testing.T) {
 		t.Fatal("headers should be sensitive")
 	}
 }
+
+func TestFlattenImportRecordsHeaderNamesWithEmptyValues(t *testing.T) {
+	t.Parallel()
+
+	remote := destinationForTest(t, `{"id":"dest_123","name":"honeycomb","endpoint":"https://api.honeycomb.io","headers":{"Authorization":"","X-Dataset":""}}`)
+
+	got, diags := flatten(context.Background(), remote, types.MapNull(types.StringType))
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	want := headersValue(t, map[string]string{"Authorization": "", "X-Dataset": ""})
+	if !got.Headers.Equal(want) {
+		t.Fatalf("headers = %v, want %v", got.Headers, want)
+	}
+}

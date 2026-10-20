@@ -57,6 +57,13 @@ func TestAccTelemetryDestinationLifecycle(t *testing.T) {
 				),
 			},
 			{
+				// Kernel redacts header values, so an import records names only.
+				ResourceName:            destinationResourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"headers"},
+			},
+			{
 				Config: finalConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCaptureDestinationID(t, &destinationID),

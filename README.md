@@ -89,6 +89,10 @@ terraform import kernel_project.example <project-id>
 terraform import kernel_telemetry_destination.example <telemetry-destination-id>
 ```
 
+Kernel never returns telemetry destination header values, so an imported
+destination has empty header values in state and the next apply sends the
+configured values.
+
 See the [first public release guide](docs/first-release.md) for the exact public
 surface and for adopting existing Kernel projects or browser pools.
 

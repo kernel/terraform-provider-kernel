@@ -30,6 +30,10 @@ type destinationResource struct {
 	client destinationClient
 }
 
+func newResourceWithClient(client destinationClient) *destinationResource {
+	return &destinationResource{client: client}
+}
+
 func NewResource() tfresource.Resource {
 	return &destinationResource{}
 }
@@ -175,6 +179,13 @@ func (r *destinationResource) Update(ctx context.Context, req tfresource.UpdateR
 	next, diags := flatten(ctx, *remote, plan.Headers)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if next.ID.ValueString() != id {
+		resp.Diagnostics.AddError(
+			"Invalid Kernel Telemetry Destination Response",
+			"Kernel returned telemetry destination ID "+strconv.Quote(next.ID.ValueString())+" while updating "+strconv.Quote(id)+".",
+		)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, next)...)

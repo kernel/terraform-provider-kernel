@@ -23,7 +23,7 @@ Kernel OTLP telemetry destination. Browser sessions reference a destination by I
 ### Optional
 
 - `description` (String) Destination description.
-- `headers` (Map of String, Sensitive) Headers sent with each export request, typically an ingestion key. Header names are matched case-insensitively. Kernel never returns header values, so Terraform detects added or removed header names but not values changed outside Terraform.
+- `headers` (Map of String, Sensitive) Headers sent with each export request, typically an ingestion key. Header names are matched case-insensitively. Kernel never returns header values, so Terraform detects added or removed header names but not values changed outside Terraform. After import, header values are empty in state and the next apply sends the configured values.
 
 ### Read-Only
 

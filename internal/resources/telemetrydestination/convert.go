@@ -70,13 +70,14 @@ func expandUpdate(ctx context.Context, plan, state destinationModel) (kernel.Tel
 // lacks is recorded with an empty value so Terraform plans to correct it.
 func flatten(ctx context.Context, remote kernel.OtlpDestination, prior types.Map) (destinationModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	for field, value := range map[string]string{"id": remote.ID, "name": remote.Name, "endpoint": remote.Endpoint} {
-		if value == "" {
-			diags.AddError(
-				"Invalid Kernel Telemetry Destination Response",
-				"Kernel returned a telemetry destination with missing field "+field+".",
-			)
-		}
+	if remote.ID == "" {
+		addInvalidResponseDiagnostic(&diags, "id")
+	}
+	if remote.Name == "" {
+		addInvalidResponseDiagnostic(&diags, "name")
+	}
+	if remote.Endpoint == "" {
+		addInvalidResponseDiagnostic(&diags, "endpoint")
 	}
 	priorHeaders, priorDiags := headerMap(ctx, prior)
 	diags.Append(priorDiags...)
@@ -122,4 +123,11 @@ func headerMap(ctx context.Context, value types.Map) (map[string]string, diag.Di
 	var headers map[string]string
 	diags := value.ElementsAs(ctx, &headers, false)
 	return headers, diags
+}
+
+func addInvalidResponseDiagnostic(diags *diag.Diagnostics, field string) {
+	diags.AddError(
+		"Invalid Kernel Telemetry Destination Response",
+		"Kernel returned a telemetry destination with missing field "+field+".",
+	)
 }
