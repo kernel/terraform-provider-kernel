@@ -34,8 +34,8 @@ func TestProviderRegistersResources(t *testing.T) {
 	p := provider.New("test")()
 
 	resources := p.Resources(context.Background())
-	if len(resources) != 3 {
-		t.Fatalf("Resources length = %d, want 3", len(resources))
+	if len(resources) != 4 {
+		t.Fatalf("Resources length = %d, want 4", len(resources))
 	}
 
 	got := make(map[string]bool, len(resources))
@@ -49,7 +49,7 @@ func TestProviderRegistersResources(t *testing.T) {
 		got[resp.TypeName] = true
 	}
 
-	for _, want := range []string{"kernel_browser_pool", "kernel_project", "kernel_telemetry_destination"} {
+	for _, want := range []string{"kernel_browser_pool", "kernel_project", "kernel_telemetry_destination", "kernel_audit_log_export_destination"} {
 		if !got[want] {
 			t.Fatalf("missing resource %s; got %v", want, got)
 		}

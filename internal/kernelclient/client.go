@@ -41,6 +41,7 @@ type Clients struct {
 	extensions            kernel.ExtensionService
 	browserPools          kernel.BrowserPoolService
 	telemetryDestinations kernel.TelemetryDestinationService
+	auditLogExports       kernel.AuditLogExportDestinationService
 }
 
 type Option func(*clientOptions)
@@ -71,6 +72,7 @@ func New(config Config, opts ...Option) Clients {
 		extensions:            kernel.NewExtensionService(requestOpts...),
 		browserPools:          kernel.NewBrowserPoolService(requestOpts...),
 		telemetryDestinations: kernel.NewTelemetryDestinationService(requestOpts...),
+		auditLogExports:       kernel.NewAuditLogExportDestinationService(requestOpts...),
 	}
 }
 
@@ -114,6 +116,24 @@ func (c Clients) UpdateTelemetryDestination(ctx context.Context, id string, para
 
 func (c Clients) DeleteTelemetryDestination(ctx context.Context, id string) error {
 	return c.telemetryDestinations.Delete(ctx, id, noMutationRetries())
+}
+
+// Audit-log export destinations are org-scoped too.
+
+func (c Clients) CreateAuditLogExportDestination(ctx context.Context, params kernel.AuditLogExportDestinationNewParams) (*kernel.AuditLogExportDestination, error) {
+	return c.auditLogExports.New(ctx, params, noMutationRetries())
+}
+
+func (c Clients) GetAuditLogExportDestination(ctx context.Context, id string) (*kernel.AuditLogExportDestination, error) {
+	return c.auditLogExports.Get(ctx, id)
+}
+
+func (c Clients) UpdateAuditLogExportDestination(ctx context.Context, id string, params kernel.AuditLogExportDestinationUpdateParams) (*kernel.AuditLogExportDestination, error) {
+	return c.auditLogExports.Update(ctx, id, params, noMutationRetries())
+}
+
+func (c Clients) DeleteAuditLogExportDestination(ctx context.Context, id string) error {
+	return c.auditLogExports.Delete(ctx, id, noMutationRetries())
 }
 
 // The remaining methods are project-scoped and take the resolved project

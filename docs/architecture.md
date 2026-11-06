@@ -91,7 +91,8 @@ These are intentionally not Terraform resources or actions:
 - logs, screenshots, live view, or telemetry streams
 - runtime counters, standby state, lease state, or session state
 - force-release, recovery, or managed runtime browser updates
-- billing, organization membership, audit-log, managed-auth, or internal administration resources
+- billing, organization membership, managed-auth, or internal administration resources
+- audit-log search, download, or destination test deliveries; `kernel_audit_log_export_destination` manages only the durable export configuration
 - standalone secrets without a dedicated durable secrets API
 
 `force_destroy` for browser pools is deferred beyond the initial v1 scope unless a demonstrated workflow justifies a later architecture amendment. Terraform should not terminate leased runtime work as ordinary durable-resource cleanup.

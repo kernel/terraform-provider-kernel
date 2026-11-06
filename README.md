@@ -17,6 +17,7 @@ Resources:
 - `kernel_browser_pool`
 - `kernel_project`
 - `kernel_telemetry_destination`
+- `kernel_audit_log_export_destination`
 
 Data sources:
 
@@ -30,6 +31,7 @@ Import:
 - `kernel_browser_pool` by canonical browser pool ID
 - `kernel_project` by canonical project ID
 - `kernel_telemetry_destination` by canonical telemetry destination ID
+- `kernel_audit_log_export_destination` by canonical audit log export destination ID
 
 ## Not Supported
 
@@ -39,6 +41,7 @@ The provider intentionally does not manage:
 - acquire, release, or flush
 - app invocation
 - logs, screenshots, or live view
+- audit log search, download, or destination test deliveries
 - runtime status or standby state
 - force-release or recovery operations
 - API key, profile, proxy, or extension resources
@@ -87,6 +90,7 @@ terraform import kernel_browser_pool.example <browser-pool-id>
 terraform import kernel_browser_pool.example <project-id>/<browser-pool-id>
 terraform import kernel_project.example <project-id>
 terraform import kernel_telemetry_destination.example <telemetry-destination-id>
+terraform import kernel_audit_log_export_destination.example <audit-log-export-destination-id>
 ```
 
 Kernel never returns telemetry destination header values, so an imported

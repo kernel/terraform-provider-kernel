@@ -30,6 +30,10 @@ jobs:
           - name: Telemetry destination
             package: ./internal/resources/telemetrydestination
             project_id_required: false
+          - name: Audit log export destination
+            package: ./internal/resources/auditlogexportdestination
+            project_id_required: false
+            audit_export_required: true
           - name: Project data source
             package: ./internal/datasources/project
             project_id_required: true
@@ -64,6 +68,17 @@ jobs:
         run: |
           : "${KERNEL_PROJECT_ID:?Set the KERNEL_PROJECT_ID repository secret before running browser-pool acceptance tests.}"
 
+      - name: Check audit log export secrets
+        if: matrix.audit_export_required
+        env:
+          KERNEL_AUDIT_EXPORT_BUCKET: ${{ secrets.KERNEL_AUDIT_EXPORT_BUCKET }}
+          KERNEL_AUDIT_EXPORT_REGION: ${{ secrets.KERNEL_AUDIT_EXPORT_REGION }}
+          KERNEL_AUDIT_EXPORT_ROLE_ARN: ${{ secrets.KERNEL_AUDIT_EXPORT_ROLE_ARN }}
+        run: |
+          : "${KERNEL_AUDIT_EXPORT_BUCKET:?Set the KERNEL_AUDIT_EXPORT_BUCKET repository secret before running audit log export acceptance tests.}"
+          : "${KERNEL_AUDIT_EXPORT_REGION:?Set the KERNEL_AUDIT_EXPORT_REGION repository secret before running audit log export acceptance tests.}"
+          : "${KERNEL_AUDIT_EXPORT_ROLE_ARN:?Set the KERNEL_AUDIT_EXPORT_ROLE_ARN repository secret before running audit log export acceptance tests.}"
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -85,6 +100,9 @@ jobs:
           KERNEL_BASE_URL: ${{ secrets.KERNEL_BASE_URL }}
           KERNEL_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_PROJECT_ID || '' }}
           KERNEL_ALT_PROJECT_ID: ${{ matrix.project_id_required && secrets.KERNEL_ALT_PROJECT_ID || '' }}
+          KERNEL_AUDIT_EXPORT_BUCKET: ${{ matrix.audit_export_required && secrets.KERNEL_AUDIT_EXPORT_BUCKET || '' }}
+          KERNEL_AUDIT_EXPORT_REGION: ${{ matrix.audit_export_required && secrets.KERNEL_AUDIT_EXPORT_REGION || '' }}
+          KERNEL_AUDIT_EXPORT_ROLE_ARN: ${{ matrix.audit_export_required && secrets.KERNEL_AUDIT_EXPORT_ROLE_ARN || '' }}
         run: |
           if [ -z "$KERNEL_BASE_URL" ]; then
             unset KERNEL_BASE_URL

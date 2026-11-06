@@ -4,7 +4,7 @@ This document is the live-API release gate for the provider's selected public
 surface. Unit tests remain the fast default. Acceptance tests run after changes
 reach `main`, through explicit local opt-in, or by manual workflow dispatch.
 
-The selected surface contains three managed resources and four read-only data
+The selected surface contains four managed resources and four read-only data
 sources. It does not claim coverage for future or unregistered Kernel objects.
 
 ## Gate Rules
@@ -29,12 +29,21 @@ export KERNEL_API_KEY=...
 export KERNEL_PROJECT_ID=...
 export KERNEL_ALT_PROJECT_ID=... # optional second project
 export KERNEL_BASE_URL=...       # optional non-production API
+export KERNEL_AUDIT_EXPORT_BUCKET=...   # audit log export destination only
+export KERNEL_AUDIT_EXPORT_REGION=...
+export KERNEL_AUDIT_EXPORT_ROLE_ARN=...
 ```
 
 `KERNEL_PROJECT_ID` is required for the browser-pool resource and all four data
 sources. The project and telemetry destination resources are organization-scoped
 and do not require it; the telemetry destination test needs an API key that is
 not bound to a project.
+
+The audit log export destination resource is organization-scoped too. Its test
+needs an API key that is not bound to a project, on a Kernel plan that includes
+audit logs, plus an S3 bucket, its region, and a role that Kernel can assume. The
+test skips locally when those three variables are unset; the workflow fails
+instead.
 
 ## Matrix
 
@@ -43,6 +52,7 @@ not bound to a project.
 | `kernel_project` resource | `./internal/resources/project` | Create, rename with stable ID, no-drift plan, canonical-ID import, post-import no drift, delete, and HTTP 404 verification. |
 | `kernel_browser_pool` resource | `./internal/resources/browserpool` | Create, durable update with stable ID, opt into rebuilding and acquire an idle browser after a configuration change, no-drift plan, provider-default and explicit project scope, bare and project-qualified import, non-force delete, and HTTP 404 verification. |
 | `kernel_telemetry_destination` resource | `./internal/resources/telemetrydestination` | Create with headers, update name, endpoint, description, and headers with stable ID, remove all headers, verify header names through the API, no-drift plan, canonical-ID import, delete, and HTTP 404 verification. |
+| `kernel_audit_log_export_destination` resource | `./internal/resources/auditlogexportdestination` | Create paused with a unique prefix, verify computed `external_id` and `kernel_role_arn`, activate explicitly, update the prefix and pause with stable ID, verify the paused status through the API, no-drift plan, canonical-ID import, delete, and HTTP 404 verification. |
 | `kernel_project` data source | `./internal/datasources/project` | Create a unique project fixture, read it by ID and exact name, read the provider-default project, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_profile` data source | `./internal/datasources/profile` | Create a durable profile fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable metadata and no drift, then delete and require coded `not_found`. |
 | `kernel_proxy` data source | `./internal/datasources/proxy` | Create a managed datacenter proxy fixture through the SDK, read it by ID and exact name with explicit and default project scope, verify durable masked metadata and no drift, then delete and require coded `not_found`. |
@@ -65,13 +75,14 @@ Run packages independently for fast failure isolation:
 go test -count=1 -timeout=30m -v ./internal/resources/project -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/browserpool -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/resources/telemetrydestination -run TestAcc
+go test -count=1 -timeout=30m -v ./internal/resources/auditlogexportdestination -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/project -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/profile -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/proxy -run TestAcc
 go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 ```
 
-The `Acceptance` workflow runs the same seven packages as separate matrix jobs
+The `Acceptance` workflow runs the same eight packages as separate matrix jobs
 with `fail-fast: false` after changes reach `main` and on manual dispatch.
 
 ## Outside The Selected Surface

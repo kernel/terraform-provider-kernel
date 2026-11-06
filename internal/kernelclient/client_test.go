@@ -361,6 +361,42 @@ func TestMutationsDisableSDKRetriesAndUseExpectedScope(t *testing.T) {
 				return clients.DeleteTelemetryDestination(ctx, "dest_123")
 			},
 		},
+		"audit log export destination create": {
+			method: http.MethodPost,
+			path:   "/audit-logs/export/destinations",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.CreateAuditLogExportDestination(ctx, kernel.AuditLogExportDestinationNewParams{
+					CreateAuditLogExportDestinationRequest: kernel.CreateAuditLogExportDestinationRequestParam{
+						Bucket:  "audit-bucket",
+						Format:  kernel.CreateAuditLogExportDestinationRequestFormatJSONLGz,
+						Prefix:  "kernel/",
+						Region:  "us-east-1",
+						RoleArn: "arn:aws:iam::123456789012:role/kernel-audit",
+						Type:    kernel.CreateAuditLogExportDestinationRequestTypeS3,
+					},
+				})
+				return err
+			},
+		},
+		"audit log export destination update": {
+			method: http.MethodPatch,
+			path:   "/audit-logs/export/destinations/dest_123",
+			call: func(ctx context.Context, clients Clients) error {
+				_, err := clients.UpdateAuditLogExportDestination(ctx, "dest_123", kernel.AuditLogExportDestinationUpdateParams{
+					UpdateAuditLogExportDestinationRequest: kernel.UpdateAuditLogExportDestinationRequestParam{
+						Prefix: kernel.String("audit/"),
+					},
+				})
+				return err
+			},
+		},
+		"audit log export destination delete": {
+			method: http.MethodDelete,
+			path:   "/audit-logs/export/destinations/dest_123",
+			call: func(ctx context.Context, clients Clients) error {
+				return clients.DeleteAuditLogExportDestination(ctx, "dest_123")
+			},
+		},
 		"profile create": {
 			method:    http.MethodPost,
 			path:      "/profiles",
@@ -551,6 +587,17 @@ func TestClientsDoNotExposeExtensionArchiveMethods(t *testing.T) {
 	for _, name := range []string{"DownloadExtension", "DownloadExtensionFromChromeStore"} {
 		if _, ok := typ.MethodByName(name); ok {
 			t.Fatalf("Clients exposes extension archive method %s", name)
+		}
+	}
+}
+
+func TestClientsDoNotExposeAuditLogRuntimeMethods(t *testing.T) {
+	t.Parallel()
+
+	typ := reflect.TypeOf(Clients{})
+	for _, name := range []string{"ListAuditLogs", "ExportAuditLogChunk", "TestAuditLogExportDestination"} {
+		if _, ok := typ.MethodByName(name); ok {
+			t.Fatalf("Clients exposes audit-log runtime method %s", name)
 		}
 	}
 }

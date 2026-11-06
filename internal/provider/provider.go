@@ -12,6 +12,7 @@ import (
 	projectdatasource "github.com/kernel/terraform-provider-kernel/internal/datasources/project"
 	"github.com/kernel/terraform-provider-kernel/internal/datasources/proxy"
 	"github.com/kernel/terraform-provider-kernel/internal/kernelclient"
+	"github.com/kernel/terraform-provider-kernel/internal/resources/auditlogexportdestination"
 	"github.com/kernel/terraform-provider-kernel/internal/resources/browserpool"
 	projectresource "github.com/kernel/terraform-provider-kernel/internal/resources/project"
 	"github.com/kernel/terraform-provider-kernel/internal/resources/telemetrydestination"
@@ -85,6 +86,7 @@ func (p *kernelProvider) Resources(ctx context.Context) []func() resource.Resour
 		browserpool.NewResource,
 		projectresource.NewResource,
 		telemetrydestination.NewResource,
+		auditlogexportdestination.NewResource,
 	}
 }
 

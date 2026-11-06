@@ -26,6 +26,11 @@ const (
 	EnvProjectID  = "KERNEL_PROJECT_ID"
 	// EnvAltProjectID names a second project for cross-project override tests.
 	EnvAltProjectID = "KERNEL_ALT_PROJECT_ID"
+	// The audit-log export destination test needs an S3 bucket and a role
+	// that trusts Kernel; it skips when these are unset.
+	EnvAuditExportBucket  = "KERNEL_AUDIT_EXPORT_BUCKET"
+	EnvAuditExportRegion  = "KERNEL_AUDIT_EXPORT_REGION"
+	EnvAuditExportRoleARN = "KERNEL_AUDIT_EXPORT_ROLE_ARN"
 
 	cleanupTimeout = 2 * time.Minute
 )
@@ -190,6 +195,41 @@ func cleanupTelemetryDestination(t testing.TB, client telemetryDestinationCleane
 
 		if err := client.DeleteTelemetryDestination(ctx, id); err != nil && !IsNotFound(err) {
 			t.Errorf("cleanup Kernel telemetry destination %s: %v", id, err)
+		}
+	})
+}
+
+func CleanupAuditLogExportDestination(t testing.TB, id string) {
+	t.Helper()
+
+	cleanupAuditLogExportDestination(t, ClientFromEnv(), id)
+}
+
+type auditLogExportDestinationCleaner interface {
+	DeleteAuditLogExportDestination(context.Context, string) error
+}
+
+func cleanupAuditLogExportDestination(t testing.TB, client auditLogExportDestinationCleaner, id string) {
+	t.Helper()
+
+	if id == "" {
+		return
+	}
+	if !AcceptanceEnabled() {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAcceptance)
+		return
+	}
+	if os.Getenv(EnvAPIKey) == "" {
+		t.Fatalf("%s must be set to clean up Kernel acceptance test resources", EnvAPIKey)
+		return
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := client.DeleteAuditLogExportDestination(ctx, id); err != nil && !IsNotFound(err) {
+			t.Errorf("cleanup Kernel audit log export destination %s: %v", id, err)
 		}
 	})
 }
