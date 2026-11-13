@@ -80,16 +80,16 @@ jobs:
           : "${KERNEL_AUDIT_EXPORT_ROLE_ARN:?Set the KERNEL_AUDIT_EXPORT_ROLE_ARN repository secret before running audit log export acceptance tests.}"
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.1.0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.5.0
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: "1.15.5"
           terraform_wrapper: false
