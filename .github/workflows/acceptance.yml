@@ -28,8 +28,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Telemetry destination
-            package: ./internal/resources/telemetrydestination
           - name: Profile data source
             package: ./internal/datasources/profile
           - name: Proxy data source
@@ -91,8 +89,9 @@ jobs:
           go test -count=1 -timeout=4m -v ${{ matrix.package }} -run TestAcc
 
   # Tests that act on the organization, use two projects, or acquire a browser
-  # from a pool. A federated token is limited to one project and cannot
-  # acquire from a pool, so these keep the API key.
+  # from a pool. A federated token is limited to one project, which also bars
+  # it from changing telemetry destinations, and it cannot acquire from a
+  # pool, so these keep the API key.
   durable-resource:
     name: ${{ matrix.name }} acceptance
     runs-on: ubuntu-latest
@@ -105,6 +104,9 @@ jobs:
             project_id_required: true
           - name: Project
             package: ./internal/resources/project
+            project_id_required: false
+          - name: Telemetry destination
+            package: ./internal/resources/telemetrydestination
             project_id_required: false
           - name: Audit log export destination
             package: ./internal/resources/auditlogexportdestination
