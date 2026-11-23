@@ -14,6 +14,85 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Tests that stay inside one project. They hold no stored API key: the job
+  # exchanges its GitHub OIDC token for a Kernel access token that lasts about
+  # five minutes and is limited to the acceptance project, and passes it to
+  # the provider as its API key.
+  project-level:
+    name: ${{ matrix.name }} acceptance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Telemetry destination
+            package: ./internal/resources/telemetrydestination
+          - name: Profile data source
+            package: ./internal/datasources/profile
+          - name: Proxy data source
+            package: ./internal/datasources/proxy
+          - name: Extension data source
+            package: ./internal/datasources/extension
+    # The access token cannot be renewed mid-test, so the job has to finish
+    # inside its lifetime.
+    timeout-minutes: 15
+    env:
+      TF_ACC: "1"
+      KERNEL_ACC: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.15.5"
+          terraform_wrapper: false
+
+      # Build first so the token's five minutes are spent on the test itself.
+      - name: Build tests
+        run: go test -count=1 -run '^$' ${{ matrix.package }}
+
+      - name: Run acceptance tests
+        env:
+          # The ID of a federation rule that accepts this workflow on main. It
+          # is an identifier, not a credential.
+          KERNEL_FEDERATION_RULE_ID: ${{ vars.KERNEL_FEDERATION_RULE_ID_ACCEPTANCE }}
+        run: |
+          set -euo pipefail
+          : "${KERNEL_FEDERATION_RULE_ID:?Set the KERNEL_FEDERATION_RULE_ID_ACCEPTANCE repository variable before running acceptance tests.}"
+
+          identity_token=$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://auth.onkernel.com" | jq -er .value)
+          echo "::add-mask::$identity_token"
+
+          response=$(curl -sS --fail-with-body https://auth.onkernel.com/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+            -d "federation_rule_id=$KERNEL_FEDERATION_RULE_ID" \
+            -d resource=https://api.onkernel.com \
+            --data-urlencode "assertion=$identity_token")
+          access_token=$(jq -er .access_token <<<"$response")
+          echo "::add-mask::$access_token"
+
+          # The token is bound to the rule's project, so the tests use that one.
+          export KERNEL_API_KEY="$access_token"
+          export KERNEL_PROJECT_ID="$(jq -er .project_id <<<"$response")"
+          go test -count=1 -timeout=4m -v ${{ matrix.package }} -run TestAcc
+
+  # Tests that act on the organization, use two projects, or acquire a browser
+  # from a pool. A federated token is limited to one project and cannot
+  # acquire from a pool, so these keep the API key.
   durable-resource:
     name: ${{ matrix.name }} acceptance
     runs-on: ubuntu-latest
@@ -27,24 +106,12 @@ jobs:
           - name: Project
             package: ./internal/resources/project
             project_id_required: false
-          - name: Telemetry destination
-            package: ./internal/resources/telemetrydestination
-            project_id_required: false
           - name: Audit log export destination
             package: ./internal/resources/auditlogexportdestination
             project_id_required: false
             audit_export_required: true
           - name: Project data source
             package: ./internal/datasources/project
-            project_id_required: true
-          - name: Profile data source
-            package: ./internal/datasources/profile
-            project_id_required: true
-          - name: Proxy data source
-            package: ./internal/datasources/proxy
-            project_id_required: true
-          - name: Extension data source
-            package: ./internal/datasources/extension
             project_id_required: true
     # Keep the job timeout above the go test timeout so Go can report the test
     # timeout before the runner stops the job. Either hard timeout can bypass

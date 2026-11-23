@@ -85,6 +85,22 @@ go test -count=1 -timeout=30m -v ./internal/datasources/extension -run TestAcc
 The `Acceptance` workflow runs the same eight packages as separate matrix jobs
 with `fail-fast: false` after changes reach `main` and on manual dispatch.
 
+Four of them stay inside one project: the telemetry destination resource and
+the profile, proxy and extension data sources. Those jobs hold no stored API
+key. Each exchanges its GitHub OIDC token for a Kernel access token through
+[workload identity federation](https://www.kernel.sh/docs/info/workload-identity/github-actions)
+and passes it to the provider as `KERNEL_API_KEY`. The token lasts about five
+minutes and cannot be renewed mid-test, so `go test` runs with a four-minute
+timeout. The federation rule's ID comes from the
+`KERNEL_FEDERATION_RULE_ID_ACCEPTANCE` repository variable, and the rule
+accepts this workflow on `main` only.
+
+The other four keep the `KERNEL_API_KEY` secret. The project resource, the
+project data source and the audit log export destination act on the
+organization, and the browser-pool tests use a second project and acquire a
+browser from a pool. A federated token is limited to one project and cannot
+acquire from a pool.
+
 ## Outside The Selected Surface
 
 The release does not include a browser-pool data source or profile, proxy,
